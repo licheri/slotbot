@@ -16,9 +16,143 @@ from telegram.ext import (
 
 TOKEN = os.getenv("TOKEN")
 SCORES_FILE = "scores.json"
+ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 
 # Valori vincenti della slot Telegram 🎰
 WIN_VALUES = {1, 22, 43, 64}
+
+
+# -------------------------------
+#   ADMIN
+# -------------------------------
+def is_admin(user_id: int) -> bool:
+    return user_id == ADMIN_ID
+
+async def setpoints_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.message.from_user
+    if not is_admin(user.id):
+        return await update.message.reply_text("Non hai il permesso.")
+
+    if len(context.args) != 2:
+        return await update.message.reply_text("Uso: /setpoints <user_id> <punti>")
+
+    target_id = context.args[0]
+    try:
+        new_points = int(context.args[1])
+    except:
+        return await update.message.reply_text("I punti devono essere un numero.")
+
+    scores = load_scores()
+    if target_id not in scores:
+        return await update.message.reply_text("Utente non trovato.")
+
+    scores[target_id]["points"] = new_points
+    save_scores(scores)
+
+    await update.message.reply_text(f"Punti aggiornati per {scores[target_id]['name']}: {new_points}")
+
+async def addpoints_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.message.from_user
+    if not is_admin(user.id):
+        return await update.message.reply_text("Non hai il permesso.")
+
+    if len(context.args) != 2:
+        return await update.message.reply_text("Uso: /addpoints <user_id> <punti>")
+
+    target_id = context.args[0]
+    try:
+        add = int(context.args[1])
+    except:
+        return await update.message.reply_text("I punti devono essere un numero.")
+
+    scores = load_scores()
+    if target_id not in scores:
+        return await update.message.reply_text("Utente non trovato.")
+
+    scores[target_id]["points"] += add
+    save_scores(scores)
+
+    await update.message.reply_text(f"Aggiunti {add} punti a {scores[target_id]['name']}. Totale: {scores[target_id]['points']}")
+
+async def setstreak_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.message.from_user
+    if not is_admin(user.id):
+        return await update.message.reply_text("Non hai il permesso.")
+
+    if len(context.args) != 2:
+        return await update.message.reply_text("Uso: /setstreak <user_id> <streak>")
+
+    target_id = context.args[0]
+    try:
+        new_streak = int(context.args[1])
+    except:
+        return await update.message.reply_text("La streak deve essere un numero.")
+
+    scores = load_scores()
+    if target_id not in scores:
+        return await update.message.reply_text("Utente non trovato.")
+
+    scores[target_id]["streak"] = new_streak
+    if new_streak > scores[target_id]["best_streak"]:
+        scores[target_id]["best_streak"] = new_streak
+
+    save_scores(scores)
+
+    await update.message.reply_text(f"Streak aggiornata per {scores[target_id]['name']}: {new_streak}")
+
+async def setsfiga_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.message.from_user
+    if not is_admin(user.id):
+        return await update.message.reply_text("Non hai il permesso.")
+
+    if len(context.args) != 2:
+        return await update.message.reply_text("Uso: /setsfiga <user_id> <sfiga>")
+
+    target_id = context.args[0]
+    try:
+        new_sfiga = int(context.args[1])
+    except:
+        return await update.message.reply_text("La sfiga deve essere un numero.")
+
+    scores = load_scores()
+    if target_id not in scores:
+        return await update.message.reply_text("Utente non trovato.")
+
+    scores[target_id]["sfiga"] = new_sfiga
+    if new_sfiga > scores[target_id]["best_sfiga"]:
+        scores[target_id]["best_sfiga"] = new_sfiga
+
+    save_scores(scores)
+
+    await update.message.reply_text(f"Sfiga aggiornata per {scores[target_id]['name']}: {new_sfiga}")
+
+async def exportjson_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.message.from_user
+    if not is_admin(user.id):
+        return await update.message.reply_text("Non hai il permesso.")
+
+    scores = load_scores()
+    text = json.dumps(scores, ensure_ascii=False, indent=2)
+
+    await update.message.reply_text(f"📦 JSON attuale:\n```\n{text}\n```", parse_mode="Markdown")
+
+async def importjson_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.message.from_user
+    if not is_admin(user.id):
+        return await update.message.reply_text("Non hai il permesso.")
+
+    if not update.message.reply_to_message:
+        return await update.message.reply_text("Rispondi a un messaggio contenente il JSON.")
+
+    raw = update.message.reply_to_message.text
+
+    try:
+        data = json.loads(raw)
+    except:
+        return await update.message.reply_text("JSON non valido.")
+
+    save_scores(data)
+    await update.message.reply_text("✔️ JSON importato correttamente.")
 
 
 # -------------------------------
@@ -373,6 +507,14 @@ def main() -> None:
     app.add_handler(CommandHandler("maledici", maledici_command))
 
     app.add_handler(CommandHandler("invoca", invoca_command))
+
+    app.add_handler(CommandHandler("setpoints", setpoints_command))
+    app.add_handler(CommandHandler("addpoints", addpoints_command))
+    app.add_handler(CommandHandler("setstreak", setstreak_command))
+    app.add_handler(CommandHandler("setsfiga", setsfiga_command))
+    app.add_handler(CommandHandler("exportjson", exportjson_command))
+    app.add_handler(CommandHandler("importjson", importjson_command))
+
 
     app.add_handler(MessageHandler(filters.Dice.ALL, handle_dice))
 

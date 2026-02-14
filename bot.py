@@ -12,7 +12,7 @@ from telegram.ext import (
     filters,
 )
 
-TOKEN = "8123476957:AAGq5HTfkJsW9Yvms89uxlG8aYKLGBmAe50"
+TOKEN = os.getenv("TOKEN")
 SCORES_FILE = "scores.json"
 
 # Valori vincenti della slot Telegram 🎰

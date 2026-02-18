@@ -177,6 +177,58 @@ head -20 commands_stats.py
 grep "^from\|^import" handlers.py
 ```
 
+## 🔍 Debugging After Deploy
+
+### Option 1: Test Command in Bot (EASIEST)
+```
+/test              # Admin only - runs 10 tests directly in Telegram
+```
+Shows:
+- Module imports ✓
+- Data loading ✓
+- User struct initialization ✓
+- ELO calculation ✓
+- All utilities working ✓
+
+### Option 2: Railway CLI (FOR LIVE LOGS)
+```bash
+# First time setup:
+npm install -g @railway/cli
+railway login
+
+# Then use:
+./get_logs.sh follow              # Live logs (default)
+./get_logs.sh tail 50             # Last 50 lines
+./get_logs.sh save error_log.txt  # Save to file
+```
+
+### Option 3: Railway Dashboard (WEB)
+https://railway.app → Select project → Logs tab
+
+### Option 4: Local Logging
+Already enabled! Logs saved to:
+```bash
+cat bot_errors.log    # View local errors (if running locally)
+```
+
+## 🧪 Testing Before Deploy
+
+```bash
+# 1. Quick syntax check (2 seconds)
+./test_local.sh
+
+# 2. Full test suite (5 seconds)
+python3 test_comprehensive.py
+
+# 3. If both pass → safe to push
+git add .
+git commit -m "your message"
+git push                  # Auto-deploys to Railway
+
+# 4. Check logs after deploy
+./get_logs.sh follow
+```
+
 ---
 
 **Status:** ✅ Fully refactored and verified

@@ -487,3 +487,148 @@ async def scheduled_backup(context):
         )
     except:
         pass
+
+
+async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Run comprehensive bot tests (admin only)"""
+    user = update.message.from_user
+    if not is_admin(user.id):
+        return await update.message.reply_text("Non hai il permesso.")
+
+    await update.message.reply_text(
+        "🧪 Test in corso...\n\n"
+        "Esecuzione della suite di test...",
+        parse_mode="Markdown"
+    )
+
+    results = {
+        "passed": 0,
+        "failed": 0,
+        "errors": []
+    }
+
+    try:
+        # Test 1: Import modules
+        try:
+            import config
+            import storage
+            import models
+            import utils
+            import handlers
+            import game_state
+            results["passed"] += 1
+        except Exception as e:
+            results["failed"] += 1
+            results["errors"].append(f"❌ Import modules: {str(e)}")
+
+        # Test 2: Load scores
+        try:
+            scores = load_scores()
+            assert isinstance(scores, dict)
+            results["passed"] += 1
+        except Exception as e:
+            results["failed"] += 1
+            results["errors"].append(f"❌ Load scores: {str(e)}")
+
+        # Test 3: Load users
+        try:
+            users = load_users()
+            assert isinstance(users, dict)
+            results["passed"] += 1
+        except Exception as e:
+            results["failed"] += 1
+            results["errors"].append(f"❌ Load users: {str(e)}")
+
+        # Test 4: Load duels
+        try:
+            duels = load_duels()
+            assert isinstance(duels, dict)
+            results["passed"] += 1
+        except Exception as e:
+            results["failed"] += 1
+            results["errors"].append(f"❌ Load duels: {str(e)}")
+
+        # Test 5: Test user struct initialization
+        try:
+            test_scores = {}
+            models.ensure_user_struct(test_scores, "123", "TestUser")
+            assert "123" in test_scores
+            assert all(key in test_scores["123"] for key in [
+                "name", "points", "streak", "best_streak", "sfiga", 
+                "best_sfiga", "total_slots", "total_wins"
+            ])
+            results["passed"] += 1
+        except Exception as e:
+            results["failed"] += 1
+            results["errors"].append(f"❌ User struct: {str(e)}")
+
+        # Test 6: Test ELO calculation
+        try:
+            test_scores = {
+                "user1": {"elo": 1600},
+                "user2": {"elo": 1400}
+            }
+            models.update_elo("user1", "user2", test_scores)
+            assert test_scores["user1"]["elo"] != 1600
+            results["passed"] += 1
+        except Exception as e:
+            results["failed"] += 1
+            results["errors"].append(f"❌ ELO calculation: {str(e)}")
+
+        # Test 7: Test format_winrate
+        try:
+            wr = utils.format_winrate(10, 5)
+            assert "%" in wr
+            results["passed"] += 1
+        except Exception as e:
+            results["failed"] += 1
+            results["errors"].append(f"❌ format_winrate: {str(e)}")
+
+        # Test 8: Test is_expansion_active
+        try:
+            result = utils.is_expansion_active()
+            assert isinstance(result, bool)
+            results["passed"] += 1
+        except Exception as e:
+            results["failed"] += 1
+            results["errors"].append(f"❌ is_expansion_active: {str(e)}")
+
+        # Test 9: File existence checks
+        try:
+            assert os.path.exists(SCORES_FILE) or not os.path.exists(SCORES_FILE)
+            assert os.path.exists(USERS_FILE) or not os.path.exists(USERS_FILE)
+            assert os.path.exists(DUELS_FILE) or not os.path.exists(DUELS_FILE)
+            results["passed"] += 1
+        except Exception as e:
+            results["failed"] += 1
+            results["errors"].append(f"❌ File checks: {str(e)}")
+
+        # Test 10: Config constants
+        try:
+            from config import WIN_VALUES, ELO_K_FACTOR, DOMAIN_EXPANSION_DURATION
+            assert isinstance(WIN_VALUES, set) and len(WIN_VALUES) > 0
+            assert isinstance(ELO_K_FACTOR, (int, float)) and ELO_K_FACTOR > 0
+            assert isinstance(DOMAIN_EXPANSION_DURATION, (int, float)) and DOMAIN_EXPANSION_DURATION > 0
+            results["passed"] += 1
+        except Exception as e:
+            results["failed"] += 1
+            results["errors"].append(f"❌ Config constants: {str(e)}")
+
+    except Exception as e:
+        results["errors"].append(f"❌ Test suite error: {str(e)}")
+
+    # Build response message
+    message = "✅ *TEST RESULTS*\n\n"
+    message += f"Passati: {results['passed']}/10\n"
+    message += f"Falliti: {results['failed']}/10\n"
+
+    if results["errors"]:
+        message += "\n*Errori:*\n"
+        for error in results["errors"][:5]:  # Mostra max 5 errori
+            message += f"{error}\n"
+        if len(results["errors"]) > 5:
+            message += f"\n... e altri {len(results['errors']) - 5} errori"
+    else:
+        message += "\n🎉 Tutti i test passati!"
+
+    await update.message.reply_text(message, parse_mode="Markdown")

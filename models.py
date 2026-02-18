@@ -31,6 +31,13 @@ def ensure_user_struct(scores: Dict[str, Any], user_id: str, nome: str) -> None:
             "domains_used": 0
         }
     else:
+        # Add missing fields for existing users
+        scores[user_id].setdefault("name", nome)
+        scores[user_id].setdefault("points", 0)
+        scores[user_id].setdefault("streak", 0)
+        scores[user_id].setdefault("best_streak", 0)
+        scores[user_id].setdefault("sfiga", 0)
+        scores[user_id].setdefault("best_sfiga", 0)
         scores[user_id].setdefault("total_slots", 0)
         scores[user_id].setdefault("total_wins", 0)
         scores[user_id].setdefault("double", 0)

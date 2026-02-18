@@ -20,7 +20,7 @@ from commands_admin import (
     exportall_command, importscore_command, importduels_command,
     importusers_command, importall_command, blockslot_command,
     unblockslot_command, helpadmin_command, backupnow_command,
-    listbackups_command, scheduled_backup, test_command
+    listbackups_command, scheduled_backup, test_command, addduel_command
 )
 
 # Stats commands
@@ -81,6 +81,7 @@ def main() -> None:
     # ============================================================
     app.add_handler(CommandHandler("debug", debug_command))
     app.add_handler(CommandHandler("test", test_command))
+    app.add_handler(CommandHandler("addduel", addduel_command))
     app.add_handler(CommandHandler("setpoints", setpoints_command))
     app.add_handler(CommandHandler("addpoints", addpoints_command))
     app.add_handler(CommandHandler("setstreak", setstreak_command))

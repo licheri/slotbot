@@ -1,0 +1,34 @@
+# Environment variables - NEVER commit these!
+.env
+.env.local
+.env*.local
+
+# Python
+*.pyc
+__pycache__/
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Game data files (can grow large)
+scores.json
+users.json
+duels.json
+backup/
+
+# Pycache
+.pytest_cache/
+.coverage

@@ -868,6 +868,10 @@ async def handle_dice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if update.message is None or update.message.dice is None:
         return
 
+    # DEFINISCI SUBITO chat_id E user_id 
+    chat_id = update.message.chat_id 
+    user_id = update.message.from_user.id
+
     # >>> DEBUG MODE: ignora tutti tranne l'admin
     if DEBUG_MODE:
         if update.message.from_user.id != ADMIN_ID:

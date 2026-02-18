@@ -894,9 +894,11 @@ async def handle_dice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     # ============================================================
 
     if not DEBUG_MODE:
+        # 1) BLOCCO MESSAGGI INOLTRATI (PTB 20+ SAFE)
+        fwd_user = getattr(update.message, "forward_from", None)
+        fwd_chat = getattr(update.message, "forward_from_chat", None)
 
-        # 1) BLOCCO MESSAGGI INOLTRATI
-        if update.message.forward_from or update.message.forward_from_chat:
+        if fwd_user or fwd_chat:
             await update.message.reply_text(
                 "❌ Non puoi inoltrare una slot. Nice try.",
                 parse_mode="Markdown"
@@ -904,7 +906,7 @@ async def handle_dice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             return
 
         # 2) BLOCCO MESSAGGI MODIFICATI
-        if update.message.edit_date:
+        if getattr(update.message, "edit_date", None):
             await update.message.reply_text(
                 "❌ Slot modificata? Non funziona così.",
                 parse_mode="Markdown"
@@ -912,7 +914,7 @@ async def handle_dice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             return
 
         # 3) BLOCCO MESSAGGI INVIATI VIA BOT
-        if update.message.via_bot:
+        if getattr(update.message, "via_bot", None):
             await update.message.reply_text(
                 "❌ Non puoi usare bot esterni per tirare slot.",
                 parse_mode="Markdown"
@@ -920,12 +922,14 @@ async def handle_dice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             return
 
         # 4) BLOCCO SLOT NON AUTENTICHE (dice mancante o spoofato)
-        if not hasattr(update.message, "dice") or update.message.dice is None:
+        dice_obj = getattr(update.message, "dice", None)
+        if dice_obj is None:
             await update.message.reply_text(
                 "❌ Questo non è un vero tiro di slot.",
                 parse_mode="Markdown"
             )
             return
+
 
         # # 5) BLOCCO SLOT TROPPO VECCHIE (anti-spoof)
         # msg_age = datetime.now(timezone.utc).timestamp() - update.message.date.timestamp()

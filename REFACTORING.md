@@ -173,6 +173,23 @@ Utility Modules (no commands)
 ✅ All scheduled tasks working
 ✅ 100% backward compatible with existing data files
 
+## Testing
+
+**Local Testing (No Railways Deploy!):**
+```bash
+./test_local.sh
+```
+
+This tests:
+- ✅ All Python syntax
+- ✅ All module imports
+- ✅ All game functions
+- ✅ All utilities
+
+Takes ~2 seconds. Use before every deployment!
+
+See [TESTING.md](TESTING.md) for details.
+
 ## Next Steps
 
 1. **Test the bot** - Ensure all commands still work

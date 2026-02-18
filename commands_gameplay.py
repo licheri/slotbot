@@ -160,7 +160,7 @@ async def espansione_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
             )
             # frase epica stile Hakari, subito dopo l'immagine
             await update.message.reply_text(
-                f"{user.first_name} non ha mai imparato la acquisito la tecnica inversa, ma…\n"
+                f"{user.first_name} non ha mai acquisito la tecnica inversa, ma…\n"
                 f"l'energia infinita che trabocca da {user.first_name} "
                 "forza la realtà istintivamente a riscriversi da sola pur di proteggerlo.\n\n"
                 f"In altre parole, per 4 minuti e 11 secondi dopo una tripla, {user.first_name} è di fatto *immortale*.",

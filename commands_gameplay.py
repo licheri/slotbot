@@ -1,0 +1,285 @@
+"""
+Gameplay commands - duels, buffs, domain expansion, etc.
+"""
+import random
+from datetime import datetime, timezone
+from telegram import Update
+from telegram.ext import ContextTypes
+from storage import load_scores, save_scores, load_duels, save_duels, load_users, save_users
+from models import ensure_user_struct, update_elo
+from utils import is_expansion_active
+import game_state
+
+
+# This will be updated when sfida_command is called
+ACTIVE_DUELS = {}
+
+
+async def sfida_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Start a duel"""
+    message = update.message
+    chat_id = message.chat_id
+    challenger = message.from_user
+
+    if chat_id in game_state.ACTIVE_DUELS and game_state.ACTIVE_DUELS[chat_id]["active"]:
+        return await message.reply_text("C'è già una sfida attiva in questo gruppo. Finite quella prima.")
+
+    if not message.reply_to_message:
+        return await message.reply_text("Usa /sfida rispondendo al messaggio di chi vuoi sfidare.")
+
+    target = message.reply_to_message.from_user
+    if target.id == challenger.id:
+        return await message.reply_text("Non puoi sfidare te stesso, anche se sei messo male.")
+
+    game_state.ACTIVE_DUELS[chat_id] = {
+        "active": True,
+        "p1_id": str(challenger.id),
+        "p2_id": str(target.id),
+        "p1_name": challenger.first_name,
+        "p2_name": target.first_name,
+        "score": {
+            str(challenger.id): 0,
+            str(target.id): 0,
+        },
+    }
+
+    await message.reply_text(
+        f"⚔️ SFIDA APERTA!\n"
+        f"{challenger.first_name} ha sfidato {target.first_name}.\n"
+        f"Primo a 3 slot vincenti vince il duello!"
+    )
+
+
+def handle_duel_win(chat_id: int, user_id: str, nome: str, scores) -> str:
+    """Handle duel win - returns message"""
+    if chat_id not in game_state.ACTIVE_DUELS:
+        return ""
+
+    duel = game_state.ACTIVE_DUELS[chat_id]
+    if not duel["active"]:
+        return ""
+
+    if user_id not in duel["score"]:
+        return ""
+
+    duel["score"][user_id] += 1
+    current = duel["score"][user_id]
+
+    msg = f"\n⚔️ {nome} sale a {current} vittorie nella sfida."
+
+    if current >= 3:
+        duel["active"] = False
+        p1_id = duel["p1_id"]
+        p2_id = duel["p2_id"]
+        p1_name = duel["p1_name"]
+        p2_name = duel["p2_name"]
+        s1 = duel["score"][p1_id]
+        s2 = duel["score"][p2_id]
+
+        ensure_user_struct(scores, p1_id, p1_name)
+        ensure_user_struct(scores, p2_id, p2_name)
+
+        if s1 > s2:
+            winner_id, loser_id = p1_id, p2_id
+        else:
+            winner_id, loser_id = p2_id, p1_id
+
+        scores[winner_id]["duel_wins"] += 1
+        scores[loser_id]["duel_losses"] += 1
+
+        elo_gain, elo_loss = update_elo(winner_id, loser_id, scores)
+
+        duels = load_duels()
+        duels.append(
+            {
+                "p1": p1_name,
+                "p2": p2_name,
+                "score1": s1,
+                "score2": s2,
+                "winner": scores[winner_id]["name"],
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+        save_duels(duels)
+
+        msg += (
+            f"\n🏁 DUELLO FINITO!\n"
+            f"{p1_name} vs {p2_name}: {s1} - {s2}\n"
+            f"Vince {scores[winner_id]['name']}!\n\n"
+            f"📈 ELO aggiornati:\n"
+            f"• {scores[winner_id]['name']}: {scores[winner_id]['elo']} ( +{elo_gain} )\n"
+            f"• {scores[loser_id]['name']}: {scores[loser_id]['elo']} ( {elo_loss} )"
+        )
+
+    return msg
+
+
+async def espansione_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Activate domain expansion (requires triple)"""
+    from config import DOMAIN_EXPANSION_DURATION, DOMAIN_EXPANSION_MESSAGE_WINDOW
+    import game_state
+    
+    chat_id = update.message.chat_id
+    user = update.message.from_user
+    user_id = str(user.id)
+
+    scores = load_scores()
+    ensure_user_struct(scores, user_id, user.first_name)
+
+    last_triple = scores[user_id].get("last_triple_msg_id", None)
+    if last_triple is None:
+        return await update.message.reply_text(
+            "❌ Non puoi espandere il dominio senza una *TRIPLA*."
+        )
+
+    if update.message.message_id - last_triple > DOMAIN_EXPANSION_MESSAGE_WINDOW:
+        return await update.message.reply_text(
+            "⏳ La finestra di attivazione è scaduta.\n"
+            "La TRIPLA non risuona più con il dominio."
+        )
+
+    if is_expansion_active(chat_id):
+        return await update.message.reply_text("Il dominio è già attivo.")
+
+    now_ts = datetime.now(timezone.utc).timestamp()
+    game_state.EXPANSION_UNTIL[chat_id] = now_ts + DOMAIN_EXPANSION_DURATION
+
+    # contatore domini
+    scores[user_id]["domains_used"] += 1
+    save_scores(scores)
+
+    # Invio immagine dominio
+    try:
+        with open("immagini/dominio.jpg", "rb") as img:
+            await update.message.reply_photo(
+                photo=img,
+                caption=(
+                    "🌌 *IDLE DEATH GAMBLE — DOMAIN EXPANSION*"
+                ),
+                parse_mode="Markdown"
+            )
+            # frase epica stile Hakari, subito dopo l'immagine
+            await update.message.reply_text(
+                f"{user.first_name} non ha mai imparato la acquisito la tecnica inversa, ma…\n"
+                f"l'energia infinita che trabocca da {user.first_name} "
+                "forza la realtà istintivamente a riscriversi da sola pur di proteggerlo.\n\n"
+                f"In altre parole, per 4 minuti e 11 secondi dopo una tripla, {user.first_name} è di fatto *immortale*.",
+                parse_mode="Markdown"
+            )
+
+    except Exception as e:
+        await update.message.reply_text(
+            "⚠️ Errore nel caricare l'immagine del dominio.",
+            parse_mode="Markdown"
+        )
+
+
+async def benedici_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Bless a random user"""
+    users = load_users()
+    if not users:
+        await update.message.reply_text("Non posso benedire nessuno, nessun utente.")
+        return
+
+    user_id, name = random.choice(list(users.items()))
+    msg = (
+        f"✨ *BENEDIZIONE DELLA SLOT*\n"
+        f"Oggi il seed si è rivelato a {name}..."
+    )
+    await update.message.reply_text(msg, parse_mode="Markdown")
+
+
+async def maledici_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Curse a random user"""
+    users = load_users()
+    if not users:
+        await update.message.reply_text("Non posso maledire nessuno, nessun utente.")
+        return
+
+    user_id, name = random.choice(list(users.items()))
+    msg = (
+        f"💀 *MALEDIZIONE DELLA SLOT*\n"
+        f"{name} è stato scelto.\n"
+        f"Per le prossime 5 slot, la matematica riderà di lui."
+    )
+    await update.message.reply_text(msg, parse_mode="Markdown")
+
+
+async def invoca_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Random prophecy command"""
+    user = update.message.from_user
+    nome = user.first_name
+
+    if random.randint(1, 100) == 1:
+        testo_mistico = """
+        ِسْمِ اللّهِ الرَّحْمـَنِ الرَّحِيمِ
+        الْحَمْدُ للّهِ رَبِّ الْعَالَمِينَ
+        الرَّحْمـنِ الرَّحِيمِ
+        مَـالِكِ يَوْمِ الدِّينِ
+        إِيَّاك نَعْبُدُ وإِيَّاكَ نَسْتَعِينُ
+        اهدِنَــــا الصِّرَاطَ المُستَقِيمَ
+        صِرَاطَ الَّذِينَ أَنعَمتَ عَلَيهِمْ غَيرِ المَغضُوبِ عَلَيهِمْ وَلاَ الضَّالِّينَ
+
+        以最仁慈、最仁慈的上帝之名
+        赞美上帝，世界之主
+        最仁慈、最仁慈
+        审判日的拥有者
+        我们要敬拜你，我们向你寻求帮助
+        引导我们走上正路
+        那些你赐予恩典的人的道路，不是那些受你的愤怒的人，也不是那些误入歧途的人的道路。
+        """
+
+        msg = (
+            f"{testo_mistico}\n\n"
+            f"✨ *BENEDIZIONE DEL PROFETA*\n"
+            f"Oggi {nome} è stato scelto."
+        )
+
+        await update.message.reply_text(msg, parse_mode="Markdown")
+
+
+async def sbusta_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Tag all users"""
+    users = load_users()
+    if not users:
+        await update.message.reply_text("Non c'è nessuno da taggare… gruppo fantasma 👻")
+        return
+
+    mentions = " ".join([f"@{name}" for name in users.values() if name])
+    msg = f"📦 **È ORA DI SBUSTARE!**\n{mentions}\n\nAndiamo a sbustare?"
+
+    await update.message.reply_text(msg, parse_mode="Markdown")
+
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Show help menu"""
+    msg = (
+        "📖 *GUIDA UFFICIALE DELLO SLOTBOT* 🎰\n\n"
+        "🎰 *Slot Tracking*\n"
+        "• Registro automaticamente ogni slot tirata\n"
+        "• Assegno punti solo alle combinazioni vincenti\n"
+        "• Gestisco streak 2–5 con bonus e messaggi goliardici\n"
+        "• Tengo conto anche della *sfiga* (fallimenti consecutivi)\n"
+        "• Traccio quante doppie/triple/poker/cinquine fai\n"
+        "• Traccio quante slot totali tiri e la tua winrate\n"
+        "• Misuro la tua velocità tra due slot consecutive (slot/s)\n\n"
+        "⚔️ *Duelli*\n"
+        "• /sfida (in risposta) — Duello al meglio delle 3 vittorie\n"
+        "• /topduelli — Classifica duelli\n"
+        "• /storicosfide — Ultime 10 sfide\n"
+        "• Sistema ELO integrato con /tope\n\n"
+        "📊 *Comandi:*\n"
+        "• /score — Le tue statistiche personali\n"
+        "• /top — Classifica punti\n"
+        "• /topstreak — Classifica streak\n"
+        "• /topsfiga — Classifica skill issue\n"
+        "• /topcombo — Classifica combo\n"
+        "• /topwinrate — Classifica winrate\n"
+        "• /topspeed — Classifica velocità\n"
+        "• /tope — Classifica ELO\n"
+        "• /espansione — Attiva l'espansione del dominio\n"
+        "• /help — Questo magnifico manuale\n\n"
+        "Buona fortuna… ne avrai bisogno. 😈"
+    )
+
+    await update.message.reply_text(msg, parse_mode="Markdown")

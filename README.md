@@ -48,7 +48,6 @@ python3 bot.py
 ## 📋 Features
 
 ### 🎮 Gameplay Commands
-- `/sbusta` - Play slot machine
 - `/sfida` - Challenge another user (ELO-based duel)
 - `/espansione` - Activate domain expansion (reroll slots)
 - `/benedici` - Bless the RNG gods

@@ -15,12 +15,21 @@ from config import (
 
 
 def load_scores() -> Dict[str, Any]:
-    """Load scores from JSON file"""
+    """Load scores from JSON file, with automatic cleanup of corrupted entries"""
     if not os.path.exists(SCORES_FILE):
         return {}
     try:
         with open(SCORES_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+            scores = json.load(f)
+        
+        # Filter out corrupted entries (non-dict values)
+        cleaned = {k: v for k, v in scores.items() if isinstance(v, dict)}
+        
+        # If we removed entries, save the cleaned version
+        if len(cleaned) < len(scores):
+            save_scores(cleaned)
+        
+        return cleaned
     except json.JSONDecodeError:
         return {}
 

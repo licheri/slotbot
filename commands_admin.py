@@ -615,24 +615,21 @@ async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             results["errors"].append(f"❌ Config constants: {str(e)}")
 
         # Build response message
-        message = "✅ *TEST RESULTS*\n\n"
+        message = "TEST RESULTS\n\n"
         message += f"Passati: {results['passed']}/10\n"
         message += f"Falliti: {results['failed']}/10\n"
 
         if results["errors"]:
-            message += "\n*Errori:*\n"
+            message += "\nErrori:\n"
             for error in results["errors"][:5]:  # Mostra max 5 errori
                 message += f"{error}\n"
             if len(results["errors"]) > 5:
                 message += f"\n... e altri {len(results['errors']) - 5} errori"
         else:
-            message += "\n🎉 Tutti i test passati!"
+            message += "\nTutti i test passati!"
 
-        await update.message.reply_text(message, parse_mode="Markdown")
+        await update.message.reply_text(message)
 
     except Exception as e:
         # Fallback error message
-        await update.message.reply_text(
-            f"❌ Errore nei test: {str(e)}",
-            parse_mode="Markdown"
-        )
+        await update.message.reply_text(f"Errore nei test: {str(e)}")

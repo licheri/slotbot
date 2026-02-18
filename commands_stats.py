@@ -51,7 +51,13 @@ async def top_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await update.message.reply_text("Nessun punteggio ancora. Qualcuno tiri una slot! 🎰")
         return
 
-    sorted_players = sorted(scores.items(), key=lambda x: x[1]["points"], reverse=True)
+    # Filter out corrupted entries (ensure all values are dicts)
+    clean_scores = {k: v for k, v in scores.items() if isinstance(v, dict) and "points" in v}
+    if not clean_scores:
+        await update.message.reply_text("Nessun punteggio valido. Qualcuno tiri una slot! 🎰")
+        return
+
+    sorted_players = sorted(clean_scores.items(), key=lambda x: x[1]["points"], reverse=True)
 
     lines = ["🏆 *CLASSIFICA PUNTI*"]
     for i, (_, d) in enumerate(sorted_players[:10], start=1):
@@ -67,7 +73,13 @@ async def topstreak_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         await update.message.reply_text("Nessuna streak registrata.")
         return
 
-    sorted_players = sorted(scores.items(), key=lambda x: x[1]["best_streak"], reverse=True)
+    # Filter out corrupted entries
+    clean_scores = {k: v for k, v in scores.items() if isinstance(v, dict) and "best_streak" in v}
+    if not clean_scores:
+        await update.message.reply_text("Nessuna streak registrata.")
+        return
+
+    sorted_players = sorted(clean_scores.items(), key=lambda x: x[1]["best_streak"], reverse=True)
 
     lines = ["🔥 *CLASSIFICA STREAK*"]
     for i, (_, d) in enumerate(sorted_players[:10], start=1):
@@ -83,7 +95,13 @@ async def topsfiga_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         await update.message.reply_text("Nessuna skill issue registrata.")
         return
 
-    sorted_players = sorted(scores.items(), key=lambda x: x[1]["best_sfiga"], reverse=True)
+    # Filter out corrupted entries
+    clean_scores = {k: v for k, v in scores.items() if isinstance(v, dict) and "best_sfiga" in v}
+    if not clean_scores:
+        await update.message.reply_text("Nessun sfiga registrata.")
+        return
+
+    sorted_players = sorted(clean_scores.items(), key=lambda x: x[1]["best_sfiga"], reverse=True)
 
     lines = ["💀 *CLASSIFICA DELLA SKILL ISSUE*"]
     for i, (_, d) in enumerate(sorted_players[:10], start=1):

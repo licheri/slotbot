@@ -253,14 +253,20 @@ async def exportall_command(update, context):
             caption="📦 Backup completo del bot", 
             parse_mode="Markdown" )
 
-async def importscore_command(update, context):
-    if not is_admin(update.message.from_user.id):
-        return
+async def importscore_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.message.from_user
+    if not is_admin(user.id):
+        return await update.message.reply_text("Non hai il permesso.")
 
-    if not update.message.document:
-        return await update.message.reply_text("Carica un file scores.json.")
+    # Deve essere una reply a un messaggio con documento
+    if not update.message.reply_to_message or not update.message.reply_to_message.document:
+        return await update.message.reply_text(
+            "Usa /importscore *rispondendo* a un messaggio che contiene `scores.json`.",
+            parse_mode="Markdown"
+        )
 
-    file = await update.message.document.get_file()
+    doc = update.message.reply_to_message.document
+    file = await doc.get_file()
     content = await file.download_as_bytearray()
 
     try:
@@ -268,17 +274,21 @@ async def importscore_command(update, context):
         scores = migrate_scores(scores)
         save_scores(scores)
         await update.message.reply_text("📥 scores.json importato e migrato.")
-    except:
-        await update.message.reply_text("⚠️ scores.json non valido.")
+    except Exception as e:
+        await update.message.reply_text(f"⚠️ Errore nell'import di scores.json:\n{e}")
+async def importduels_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.message.from_user
+    if not is_admin(user.id):
+        return await update.message.reply_text("Non hai il permesso.")
 
-async def importduels_command(update, context):
-    if not is_admin(update.message.from_user.id):
-        return
+    if not update.message.reply_to_message or not update.message.reply_to_message.document:
+        return await update.message.reply_text(
+            "Usa /importduels *rispondendo* a un messaggio che contiene `duels.json`.",
+            parse_mode="Markdown"
+        )
 
-    if not update.message.document:
-        return await update.message.reply_text("Carica un file duels.json.")
-
-    file = await update.message.document.get_file()
+    doc = update.message.reply_to_message.document
+    file = await doc.get_file()
     content = await file.download_as_bytearray()
 
     try:
@@ -286,17 +296,21 @@ async def importduels_command(update, context):
         duels = migrate_duels(duels)
         save_duels(duels)
         await update.message.reply_text("📥 duels.json importato e migrato.")
-    except:
-        await update.message.reply_text("⚠️ duels.json non valido.")
+    except Exception as e:
+        await update.message.reply_text(f"⚠️ Errore nell'import di duels.json:\n{e}")
+async def importusers_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.message.from_user
+    if not is_admin(user.id):
+        return await update.message.reply_text("Non hai il permesso.")
 
-async def importusers_command(update, context):
-    if not is_admin(update.message.from_user.id):
-        return
+    if not update.message.reply_to_message or not update.message.reply_to_message.document:
+        return await update.message.reply_text(
+            "Usa /importusers *rispondendo* a un messaggio che contiene `users.json`.",
+            parse_mode="Markdown"
+        )
 
-    if not update.message.document:
-        return await update.message.reply_text("Carica un file users.json.")
-
-    file = await update.message.document.get_file()
+    doc = update.message.reply_to_message.document
+    file = await doc.get_file()
     content = await file.download_as_bytearray()
 
     try:
@@ -304,49 +318,54 @@ async def importusers_command(update, context):
         users = migrate_users(users)
         save_users(users)
         await update.message.reply_text("📥 users.json importato e migrato.")
-    except:
-        await update.message.reply_text("⚠️ users.json non valido.")
+    except Exception as e:
+        await update.message.reply_text(f"⚠️ Errore nell'import di users.json:\n{e}")
 
-async def importall_command(update, context):
-    if not is_admin(update.message.from_user.id):
-        return
+async def importall_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.message.from_user
+    if not is_admin(user.id):
+        return await update.message.reply_text("Non hai il permesso.")
 
-    if not update.message.document:
-        return await update.message.reply_text("Carica un file ZIP con scores.json, duels.json, users.json.")
+    if not update.message.reply_to_message or not update.message.reply_to_message.document:
+        return await update.message.reply_text(
+            "Usa /importall *rispondendo* a un file ZIP contenente scores.json, duels.json e users.json.",
+            parse_mode="Markdown"
+        )
 
-    file = await update.message.document.get_file()
+    doc = update.message.reply_to_message.document
+    file = await doc.get_file()
     content = await file.download_as_bytearray()
 
     try:
         z = zipfile.ZipFile(io.BytesIO(content))
     except:
-        return await update.message.reply_text("⚠️ ZIP non valido.")
+        return await update.message.reply_text("⚠️ Il file non è uno ZIP valido.")
 
     # SCORES
     try:
         scores = json.loads(z.read("scores.json").decode("utf-8"))
         scores = migrate_scores(scores)
         save_scores(scores)
-    except:
-        await update.message.reply_text("⚠️ scores.json mancante o invalido.")
+    except Exception as e:
+        await update.message.reply_text(f"⚠️ Errore in scores.json:\n{e}")
 
     # DUELS
     try:
         duels = json.loads(z.read("duels.json").decode("utf-8"))
         duels = migrate_duels(duels)
         save_duels(duels)
-    except:
-        await update.message.reply_text("⚠️ duels.json mancante o invalido.")
+    except Exception as e:
+        await update.message.reply_text(f"⚠️ Errore in duels.json:\n{e}")
 
     # USERS
     try:
         users = json.loads(z.read("users.json").decode("utf-8"))
         users = migrate_users(users)
         save_users(users)
-    except:
-        await update.message.reply_text("⚠️ users.json mancante o invalido.")
+    except Exception as e:
+        await update.message.reply_text(f"⚠️ Errore in users.json:\n{e}")
 
-    await update.message.reply_text("📥 Import completo e migrazione eseguita.")
+    await update.message.reply_text("📥 Import completo eseguito.")
 
 
 async def blockslot_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -386,6 +405,46 @@ async def unblockslot_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         "Il bot ora registra di nuovo tutte le slot.",
         parse_mode="Markdown"
     )
+
+async def helpadmin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.message.from_user
+    if not is_admin(user.id):
+        return  # Non mostra nulla agli altri
+
+    msg = (
+        "🛠️ *Pannello Admin — SlotBot*\n"
+        "Ecco tutti i comandi amministrativi disponibili:\n\n"
+
+        "🔧 *Modalità Debug / Sicurezza*\n"
+        "• /debug — Attiva/disattiva debug mode (ignora tutti tranne te, no score, no failsafe)\n"
+        "• /togglefailsafe — Attiva/disattiva i failsafe anti-cheat\n\n"
+
+        "📤 *Export JSON*\n"
+        "• /exportscore — Esporta scores.json\n"
+        "• /exportduels — Esporta duels.json\n"
+        "• /exportusers — Esporta users.json\n"
+        "• /exportall — Esporta tutti i JSON in un unico ZIP\n\n"
+
+        "📥 *Import JSON*\n"
+        "• /importscore — Importa scores.json (rispondi al file)\n"
+        "• /importduels — Importa duels.json (rispondi al file)\n"
+        "• /importusers — Importa users.json (rispondi al file)\n"
+        "• /importall — Importa ZIP con scores.json, duels.json, users.json\n\n"
+
+        "🧬 *Migrazione*\n"
+        "• /migrascores — Migra manualmente scores.json alla versione corrente\n\n"
+
+        "📦 *Backup*\n"
+        "• /backupnow — Crea un backup ZIP immediato e te lo invia\n"
+        "• /listbackups — Mostra i backup salvati in /backup/\n\n"
+
+        "⏱️ *Backup automatico*\n"
+        "• Ogni 12h viene creato un backup ZIP\n"
+        "• Viene inviato a te\n"
+        "• Mantiene solo gli ultimi 10\n"
+    )
+
+    await update.message.reply_text(msg, parse_mode="Markdown")
 
 
 # -------------------------------
@@ -1416,6 +1475,7 @@ def main() -> None:
     app.add_handler(CommandHandler("backupnow", backupnow_command))
     app.add_handler(CommandHandler("listbackups", listbackups_command))
 
+    app.add_handler(CommandHandler("helpadmin", helpadmin_command))
 
 
 

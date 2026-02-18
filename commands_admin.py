@@ -495,19 +495,19 @@ async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(user.id):
         return await update.message.reply_text("Non hai il permesso.")
 
-    await update.message.reply_text(
-        "🧪 Test in corso...\n\n"
-        "Esecuzione della suite di test...",
-        parse_mode="Markdown"
-    )
-
-    results = {
-        "passed": 0,
-        "failed": 0,
-        "errors": []
-    }
-
     try:
+        await update.message.reply_text(
+            "🧪 Test in corso...\n"
+            "Esecuzione della suite di test...",
+            parse_mode="Markdown"
+        )
+
+        results = {
+            "passed": 0,
+            "failed": 0,
+            "errors": []
+        }
+
         # Test 1: Import modules
         try:
             import config
@@ -614,21 +614,25 @@ async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             results["failed"] += 1
             results["errors"].append(f"❌ Config constants: {str(e)}")
 
+        # Build response message
+        message = "✅ *TEST RESULTS*\n\n"
+        message += f"Passati: {results['passed']}/10\n"
+        message += f"Falliti: {results['failed']}/10\n"
+
+        if results["errors"]:
+            message += "\n*Errori:*\n"
+            for error in results["errors"][:5]:  # Mostra max 5 errori
+                message += f"{error}\n"
+            if len(results["errors"]) > 5:
+                message += f"\n... e altri {len(results['errors']) - 5} errori"
+        else:
+            message += "\n🎉 Tutti i test passati!"
+
+        await update.message.reply_text(message, parse_mode="Markdown")
+
     except Exception as e:
-        results["errors"].append(f"❌ Test suite error: {str(e)}")
-
-    # Build response message
-    message = "✅ *TEST RESULTS*\n\n"
-    message += f"Passati: {results['passed']}/10\n"
-    message += f"Falliti: {results['failed']}/10\n"
-
-    if results["errors"]:
-        message += "\n*Errori:*\n"
-        for error in results["errors"][:5]:  # Mostra max 5 errori
-            message += f"{error}\n"
-        if len(results["errors"]) > 5:
-            message += f"\n... e altri {len(results['errors']) - 5} errori"
-    else:
-        message += "\n🎉 Tutti i test passati!"
-
-    await update.message.reply_text(message, parse_mode="Markdown")
+        # Fallback error message
+        await update.message.reply_text(
+            f"❌ Errore nei test: {str(e)}",
+            parse_mode="Markdown"
+        )

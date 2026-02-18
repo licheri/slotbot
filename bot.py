@@ -4,6 +4,10 @@ import asyncio
 from typing import Dict, Any
 import random
 from datetime import datetime, timezone
+import zipfile 
+import io
+import glob
+
 
 from telegram import Update
 from telegram.ext import (
@@ -19,6 +23,9 @@ SCORES_FILE = "scores.json"
 USERS_FILE = "users.json"
 DUELS_FILE = "duels.json"
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
+DEBUG_MODE = False
+CURRENT_JSON_VERSION = 2
+
 
 WIN_VALUES = {1, 22, 43, 64}
 
@@ -35,6 +42,47 @@ SLOT_BLOCKED = False
 # -------------------------------
 def is_admin(user_id: int) -> bool:
     return user_id == ADMIN_ID
+
+async def debug_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    global DEBUG_MODE
+
+    user = update.message.from_user
+    if not is_admin(user.id):
+        return await update.message.reply_text("Non hai il permesso.")
+
+    # toggle
+    DEBUG_MODE = not DEBUG_MODE
+
+    if DEBUG_MODE:
+        # EXPORT AUTOMATICO
+        try:
+            await exportjson_command(update, context)
+        except:
+            await update.message.reply_text("⚠️ Export fallito, ma debug attivo.")
+
+        await update.message.reply_text(
+            "🛠️ *DEBUG MODE ATTIVO*\n"
+            "• Solo tu puoi tirare slot\n"
+            "• I failsafe sono disattivati",
+            parse_mode="Markdown"
+        )
+    else:
+        await update.message.reply_text(
+            "🛠️ *DEBUG MODE DISATTIVATO*\n"
+            "Il bot è tornato alla normalità.",
+            parse_mode="Markdown"
+        )
+
+async def migrascores_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.message.from_user
+    if not is_admin(user.id):
+        return await update.message.reply_text("Non hai il permesso.")
+
+    scores = load_scores()
+    migrated = migrate_scores(scores)
+    save_scores(migrated)
+
+    await update.message.reply_text("🔧 Scores migrati alla nuova struttura.")
 
 
 async def setpoints_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -140,35 +188,166 @@ async def setsfiga_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(f"Sfiga aggiornata per {scores[target_id]['name']}: {new_sfiga}")
 
-
-async def exportjson_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.message.from_user
-    if not is_admin(user.id):
-        return await update.message.reply_text("Non hai il permesso.")
-
-    scores = load_scores()
-    text = json.dumps(scores, ensure_ascii=False, indent=2)
-
-    await update.message.reply_text(f"📦 JSON attuale:\n```\n{text}\n```", parse_mode="Markdown")
-
-
-async def importjson_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.message.from_user
-    if not is_admin(user.id):
-        return await update.message.reply_text("Non hai il permesso.")
-
-    if not update.message.reply_to_message:
-        return await update.message.reply_text("Rispondi a un messaggio contenente il JSON.")
-
-    raw = update.message.reply_to_message.text
+async def exportscore_command(update, context):
+    if not is_admin(update.message.from_user.id):
+        return
 
     try:
-        data = json.loads(raw)
+        with open("scores.json", "rb") as f:
+            await update.message.reply_document(
+                document=f,
+                filename="scores.json",
+                caption="📤 Ecco *scores.json*",
+                parse_mode="Markdown"
+            )
     except:
-        return await update.message.reply_text("JSON non valido.")
+        await update.message.reply_text("⚠️ scores.json non trovato.")
 
-    save_scores(data)
-    await update.message.reply_text("✔️ JSON importato correttamente.")
+async def exportduels_command(update, context):
+    if not is_admin(update.message.from_user.id):
+        return
+
+    try:
+        with open("duels.json", "rb") as f:
+            await update.message.reply_document(
+                document=f,
+                filename="duels.json",
+                caption="📤 Ecco *duels.json*",
+                parse_mode="Markdown"
+            )
+    except:
+        await update.message.reply_text("⚠️ duels.json non trovato.")
+
+async def exportusers_command(update, context):
+    if not is_admin(update.message.from_user.id):
+        return
+
+    try:
+        with open("users.json", "rb") as f:
+            await update.message.reply_document(
+                document=f,
+                filename="users.json",
+                caption="📤 Ecco *users.json*",
+                parse_mode="Markdown"
+            )
+    except:
+        await update.message.reply_text("⚠️ users.json non trovato.")
+
+async def exportall_command(update, context): 
+    if not is_admin(update.message.from_user.id): 
+        return 
+    
+    buffer = io.BytesIO() 
+   
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as z: 
+        for filename in ["scores.json", "duels.json", "users.json"]: 
+            try: 
+                z.write(filename) 
+            except: 
+                pass 
+        
+        buffer.seek(0) 
+        await update.message.reply_document( 
+            document=buffer, 
+            filename="slotbot_backup.zip", 
+            caption="📦 Backup completo del bot", 
+            parse_mode="Markdown" )
+
+async def importscore_command(update, context):
+    if not is_admin(update.message.from_user.id):
+        return
+
+    if not update.message.document:
+        return await update.message.reply_text("Carica un file scores.json.")
+
+    file = await update.message.document.get_file()
+    content = await file.download_as_bytearray()
+
+    try:
+        scores = json.loads(content.decode("utf-8"))
+        scores = migrate_scores(scores)
+        save_scores(scores)
+        await update.message.reply_text("📥 scores.json importato e migrato.")
+    except:
+        await update.message.reply_text("⚠️ scores.json non valido.")
+
+async def importduels_command(update, context):
+    if not is_admin(update.message.from_user.id):
+        return
+
+    if not update.message.document:
+        return await update.message.reply_text("Carica un file duels.json.")
+
+    file = await update.message.document.get_file()
+    content = await file.download_as_bytearray()
+
+    try:
+        duels = json.loads(content.decode("utf-8"))
+        duels = migrate_duels(duels)
+        save_duels(duels)
+        await update.message.reply_text("📥 duels.json importato e migrato.")
+    except:
+        await update.message.reply_text("⚠️ duels.json non valido.")
+
+async def importusers_command(update, context):
+    if not is_admin(update.message.from_user.id):
+        return
+
+    if not update.message.document:
+        return await update.message.reply_text("Carica un file users.json.")
+
+    file = await update.message.document.get_file()
+    content = await file.download_as_bytearray()
+
+    try:
+        users = json.loads(content.decode("utf-8"))
+        users = migrate_users(users)
+        save_users(users)
+        await update.message.reply_text("📥 users.json importato e migrato.")
+    except:
+        await update.message.reply_text("⚠️ users.json non valido.")
+
+async def importall_command(update, context):
+    if not is_admin(update.message.from_user.id):
+        return
+
+    if not update.message.document:
+        return await update.message.reply_text("Carica un file ZIP con scores.json, duels.json, users.json.")
+
+    file = await update.message.document.get_file()
+    content = await file.download_as_bytearray()
+
+    try:
+        z = zipfile.ZipFile(io.BytesIO(content))
+    except:
+        return await update.message.reply_text("⚠️ ZIP non valido.")
+
+    # SCORES
+    try:
+        scores = json.loads(z.read("scores.json").decode("utf-8"))
+        scores = migrate_scores(scores)
+        save_scores(scores)
+    except:
+        await update.message.reply_text("⚠️ scores.json mancante o invalido.")
+
+    # DUELS
+    try:
+        duels = json.loads(z.read("duels.json").decode("utf-8"))
+        duels = migrate_duels(duels)
+        save_duels(duels)
+    except:
+        await update.message.reply_text("⚠️ duels.json mancante o invalido.")
+
+    # USERS
+    try:
+        users = json.loads(z.read("users.json").decode("utf-8"))
+        users = migrate_users(users)
+        save_users(users)
+    except:
+        await update.message.reply_text("⚠️ users.json mancante o invalido.")
+
+    await update.message.reply_text("📥 Import completo e migrazione eseguita.")
+
 
 async def blockslot_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global SLOT_BLOCKED
@@ -212,6 +391,32 @@ async def unblockslot_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 # -------------------------------
 #   STORAGE
 # -------------------------------
+
+
+def create_backup_zip():
+    os.makedirs("backup", exist_ok=True)
+
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M")
+    zip_path = f"backup/backup_{timestamp}.zip"
+
+    # CREA IL FILE ZIP
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
+        for filename in ["scores.json", "duels.json", "users.json"]:
+            if os.path.exists(filename):
+                z.write(filename)
+
+    # MANTIENI SOLO GLI ULTIMI 10 BACKUP
+    backups = sorted(glob.glob("backup/backup_*.zip"))
+    if len(backups) > 10:
+        for old in backups[:-10]:
+            try:
+                os.remove(old)
+            except:
+                pass
+
+    return zip_path
+
+
 def load_scores() -> Dict[str, Any]:
     if not os.path.exists(SCORES_FILE):
         return {}
@@ -256,6 +461,31 @@ def save_duels(duels):
     with open(DUELS_FILE, "w", encoding="utf-8") as f:
         json.dump(duels, f, ensure_ascii=False, indent=2)
 
+def migrate_scores(scores):
+    version = scores.get("_version", 1)
+
+    # MIGRAZIONE DA VERSIONE 1 → 2
+    if version < 2:
+        for user_id, d in scores.items():
+            if user_id.startswith("_"):
+                continue
+
+            d.setdefault("domains_used", 0)
+            d.setdefault("last_triple_msg_id", None)
+            d.setdefault("best_speed", 0.0)
+
+        scores["_version"] = 2
+
+    return scores
+
+def migrate_duels(duels):
+    duels.setdefault("_version", CURRENT_JSON_VERSION)
+    return duels
+
+def migrate_users(users):
+    users.setdefault("_version", CURRENT_JSON_VERSION)
+    return users
+
 
 # -------------------------------
 #   USER STRUCT + ELO
@@ -281,6 +511,8 @@ def ensure_user_struct(scores: Dict[str, Any], user_id: str, nome: str):
             "best_speed": 0.0,
             "last_slot_ts": 0.0,
             "last_was_win": False,
+            "last_triple_msg_id": None,
+            "domains_used": 0
         }
     else:
         scores[user_id].setdefault("total_slots", 0)
@@ -295,6 +527,10 @@ def ensure_user_struct(scores: Dict[str, Any], user_id: str, nome: str):
         scores[user_id].setdefault("best_speed", 0.0)
         scores[user_id].setdefault("last_slot_ts", 0.0)
         scores[user_id].setdefault("last_was_win", False)
+        scores[user_id].setdefault("last_triple_msg_id", None)
+        scores[user_id].setdefault("domains_used", 0)
+
+
         scores[user_id]["name"] = nome
 
 
@@ -488,6 +724,20 @@ async def storicosfide_command(update: Update, context: ContextTypes.DEFAULT_TYP
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
 
+async def scheduled_backup(context):
+    zip_path = create_backup_zip()
+
+    # INVIA IL BACKUP A TE (ADMIN)
+    try:
+        await context.bot.send_document(
+            chat_id=ADMIN_ID,
+            document=open(zip_path, "rb"),
+            caption="📦 Backup automatico eseguito."
+        )
+    except:
+        pass
+
+
 # -------------------------------
 #   ESPANSIONE DEL DOMINIO
 # -------------------------------
@@ -495,23 +745,61 @@ def is_expansion_active(chat_id: int) -> bool:
     now_ts = datetime.now(timezone.utc).timestamp()
     return EXPANSION_UNTIL.get(chat_id, 0) > now_ts
 
-
 async def espansione_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.message.chat_id
-    now_ts = datetime.now(timezone.utc).timestamp()
-    duration = 4 * 60 + 11
+    user = update.message.from_user
+    user_id = str(user.id)
+
+    scores = load_scores()
+    ensure_user_struct(scores, user_id, user.first_name)
+
+    last_triple = scores[user_id].get("last_triple_msg_id", None)
+    if last_triple is None:
+        return await update.message.reply_text(
+            "❌ Non puoi espandere il dominio senza una *TRIPLA*."
+        )
+
+    if update.message.message_id - last_triple > 10:
+        return await update.message.reply_text(
+            "⏳ La finestra di attivazione è scaduta.\n"
+            "La TRIPLA non risuona più con il dominio."
+        )
 
     if is_expansion_active(chat_id):
-        return await update.message.reply_text("L'espansione del dominio è già attiva in questo gruppo.")
+        return await update.message.reply_text("Il dominio è già attivo.")
 
-    EXPANSION_UNTIL[chat_id] = now_ts + duration
+    now_ts = datetime.now(timezone.utc).timestamp()
+    EXPANSION_UNTIL[chat_id] = now_ts + (4 * 60 + 11)
 
-    await update.message.reply_text(
-        "🌌 *ESPANSIONE DEL DOMINIO ATTIVATA*\n"
-        "Per i prossimi 4 minuti e 11 secondi, le slot vincenti vengono ricompensate con più punti\n"
-        "e, a volte, la realtà si piega: alcune sconfitte vengono *annullate*.",
-        parse_mode="Markdown",
-    )
+    # contatore domini
+    scores[user_id]["domains_used"] += 1
+    save_scores(scores)
+
+    # Invio immagine dominio
+    try:
+        with open("immagini/dominio.jpg", "rb") as img:
+            await update.message.reply_photo(
+                photo=img,
+                caption=(
+                    "🌌 *IDLE DEATH GAMBLE — DOMAIN EXPANSION*"
+                ),
+                parse_mode="Markdown"
+            )
+            # frase epica stile Hakari, subito dopo l’immagine
+            await update.message.reply_text(
+                f"{user.first_name} non ha mai imparato la acquisito la tecnica inversa, ma…\n"
+                f"l’energia infinita che trabocca da {user.first_name} "
+                "forza la realtà istintivamente a riscriversi da sola pur di proteggerlo.\n\n"
+                f"In altre parole, per 4 minuti e 11 secondi dopo una tripla, {user.first_name} è di fatto *immortale*.”",
+                parse_mode="Markdown"
+            )
+
+    except Exception as e:
+        await update.message.reply_text(
+            "⚠️ Errore nel caricare l'immagine del dominio.",
+            parse_mode="Markdown"
+        )
+
 
 
 # -------------------------------
@@ -520,6 +808,12 @@ async def espansione_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def handle_dice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if update.message is None or update.message.dice is None:
         return
+
+    # >>> DEBUG MODE: ignora tutti tranne l'admin
+    if DEBUG_MODE:
+        if update.message.from_user.id != ADMIN_ID:
+            return  # gli altri non possono tirare slot
+
 
     # -------------------------------
     #   BLOCCO SLOT (ADMIN)
@@ -536,7 +830,78 @@ async def handle_dice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if dice.emoji != "🎰":
         return
 
+    # ============================================================
+    #   FAILSAFE ANTI-CHEAT COMPLETO
+    # ============================================================
+
+    if not DEBUG_MODE:
+
+        # 1) BLOCCO MESSAGGI INOLTRATI
+        if update.message.forward_from or update.message.forward_from_chat:
+            await update.message.reply_text(
+                "❌ Non puoi inoltrare una slot. Nice try.",
+                parse_mode="Markdown"
+            )
+            return
+
+        # 2) BLOCCO MESSAGGI MODIFICATI
+        if update.message.edit_date:
+            await update.message.reply_text(
+                "❌ Slot modificata? Non funziona così.",
+                parse_mode="Markdown"
+            )
+            return
+
+        # 3) BLOCCO MESSAGGI INVIATI VIA BOT
+        if update.message.via_bot:
+            await update.message.reply_text(
+                "❌ Non puoi usare bot esterni per tirare slot.",
+                parse_mode="Markdown"
+            )
+            return
+
+        # 4) BLOCCO SLOT NON AUTENTICHE (dice mancante o spoofato)
+        if not hasattr(update.message, "dice") or update.message.dice is None:
+            await update.message.reply_text(
+                "❌ Questo non è un vero tiro di slot.",
+                parse_mode="Markdown"
+            )
+            return
+
+        # # 5) BLOCCO SLOT TROPPO VECCHIE (anti-spoof)
+        # msg_age = datetime.now(timezone.utc).timestamp() - update.message.date.timestamp()
+        # if msg_age > 10:  # 10 secondi
+        #     await update.message.reply_text(
+        #         "❌ Non puoi usare slot vecchie.",
+        #         parse_mode="Markdown"
+        #     )
+        #     return
+
+    # ============================================================
+    #   FINE FAILSAFE
+    # ============================================================
+
+
+    # Notifica fine dominio
+    if chat_id in EXPANSION_UNTIL:
+        if EXPANSION_UNTIL[chat_id] < datetime.now(timezone.utc).timestamp():
+            await update.message.reply_text(
+                "🌌 *Il dominio si dissolve.*\n"
+                "La realtà torna stabile.",
+                parse_mode="Markdown"
+            )
+            EXPANSION_UNTIL[chat_id] = 0
+
+
+    # misura subito la velocità, PRIMA dello sleep
+    now_ts = datetime.now(timezone.utc).timestamp()
+    last_ts = scores[user_id]["last_slot_ts"]
+    scores[user_id]["last_slot_ts"] = now_ts
+
+    # poi fai lo sleep per non spoilerare l’animazione
     await asyncio.sleep(1)
+
+
 
     message = update.message
     user = message.from_user
@@ -558,22 +923,29 @@ async def handle_dice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     # -------------------------------
     if is_expansion_active(chat_id):
         if scores[user_id]["last_was_win"] and dice.value not in WIN_VALUES:
-            if random.random() < 0.35:
-                await message.reply_text(
-                    "🌌 *ESPANSIONE DEL DOMINIO*\n"
-                    "La realtà si distorce… la tua slot è stata *annullata*.",
-                    parse_mode="Markdown",
+            if random.random() < 0.33:  # probabilità stile Hakari
+                
+                # Cancella la slot dell’utente
+                try:
+                    await context.bot.delete_message(
+                        chat_id=chat_id,
+                        message_id=message.message_id
+                    )
+                except:
+                    pass  # se non può cancellare, ignora
+
+                # Messaggio epico stile Idle Death Gamble
+                await update.message.reply_text(
+                    "🌌 *IDLE DEATH GAMBLE*\n"
+                    "La tua sconfitta è stata *cancellata*.",
+                    parse_mode="Markdown"
                 )
-                save_scores(scores)
-                return
+
+                return  # IGNORA COMPLETAMENTE LA SLOT
 
     # -------------------------------
     #   TRACKING GENERALE
     # -------------------------------
-    now_ts = datetime.now(timezone.utc).timestamp()
-    last_ts = scores[user_id]["last_slot_ts"]
-    scores[user_id]["last_slot_ts"] = now_ts
-
     scores[user_id]["total_slots"] += 1
 
     speed_msg = ""
@@ -606,6 +978,17 @@ async def handle_dice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             scores[user_id]["double"] += 1
         elif streak == 3:
             scores[user_id]["triple"] += 1
+            # >>> NEW — Messaggio stile Hakari quando diventi idoneo al dominio
+            await message.reply_text(
+                f"🎲 *JACKPOT PROBABILITY RISING*\n"
+                f"{nome} ha ottenuto una *TRIPLA*.\n"
+                f"L’energia del dominio vibra attorno a lui…\n"
+                f"Può attivare l’ESPANSIONE entro i prossimi *10 messaggi*.",
+                parse_mode="Markdown"
+            )
+
+            scores[user_id]["last_triple_msg_id"] = message.message_id
+ 
         elif streak == 4:
             scores[user_id]["quad"] += 1
         elif streak == 5:
@@ -627,7 +1010,7 @@ async def handle_dice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
         if is_expansion_active(chat_id):
             scores[user_id]["points"] += 1
-            msg += "🌌 *ESPANSIONE DEL DOMINIO ATTIVA* — i punti fluiscono più forti.\n"
+            msg += "🌌 *ESPANSIONE DEL DOMINIO ATTIVA*\n"
 
         msg += msg_vittoria(nome, jackpot)
         streak_msg = msg_streak(nome, streak)
@@ -697,7 +1080,8 @@ async def score_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         f"• Record skill issue: {d['best_sfiga']}\n"
         f"• Doppie: {d.get('double', 0)} — Triple: {d.get('triple', 0)} — Poker: {d.get('quad', 0)} — Cinquine: {d.get('quint', 0)}\n"
         f"• Record velocità: {best_speed:.3f} slot/s\n"
-        f"• Duelli: {d.get('duel_wins', 0)} vittorie / {d.get('duel_losses', 0)} sconfitte"
+        f"• Duelli: {d.get('duel_wins', 0)} vittorie / {d.get('duel_losses', 0)} sconfitte\n"
+        f"• Domini espansi: {d.get('domains_used', 0)}\n"
     )
 
     await update.message.reply_text(msg)
@@ -951,12 +1335,43 @@ async def sbusta_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(msg, parse_mode="Markdown")
 
+async def backupnow_command(update, context):
+    if not is_admin(update.message.from_user.id):
+        return
+
+    zip_path = create_backup_zip()
+
+    await update.message.reply_document(
+        document=open(zip_path, "rb"),
+        filename=os.path.basename(zip_path),
+        caption="📦 Backup manuale eseguito."
+    )
+
+async def listbackups_command(update, context):
+    if not is_admin(update.message.from_user.id):
+        return
+
+    backups = sorted(glob.glob("backup/backup_*.zip"))
+
+    if not backups:
+        return await update.message.reply_text("Nessun backup trovato.")
+
+    msg = "📦 *Backup disponibili:*\n\n"
+    for b in backups:
+        msg += f"• `{os.path.basename(b)}`\n"
+
+    await update.message.reply_text(msg, parse_mode="Markdown")
+
 
 # -------------------------------
 #   MAIN
 # -------------------------------
 def main() -> None:
     app = ApplicationBuilder().token(TOKEN).build()
+
+    # Backup ogni 12 ore
+    app.job_queue.run_repeating(scheduled_backup, interval=60*60*12, first=10)
+
 
     app.add_handler(CommandHandler("score", score_command))
     app.add_handler(CommandHandler("top", top_command))
@@ -978,14 +1393,30 @@ def main() -> None:
     app.add_handler(CommandHandler("sfida", sfida_command))
     app.add_handler(CommandHandler("espansione", espansione_command))
 
+    app.add_handler(CommandHandler("debug", debug_command))
     app.add_handler(CommandHandler("setpoints", setpoints_command))
     app.add_handler(CommandHandler("addpoints", addpoints_command))
     app.add_handler(CommandHandler("setstreak", setstreak_command))
     app.add_handler(CommandHandler("setsfiga", setsfiga_command))
-    app.add_handler(CommandHandler("exportjson", exportjson_command))
-    app.add_handler(CommandHandler("importjson", importjson_command))
     app.add_handler(CommandHandler("blockslot", blockslot_command))
     app.add_handler(CommandHandler("unblockslot", unblockslot_command))
+
+    app.add_handler(CommandHandler("exportscore", exportscore_command))
+    app.add_handler(CommandHandler("exportduels", exportduels_command))
+    app.add_handler(CommandHandler("exportusers", exportusers_command))
+    app.add_handler(CommandHandler("exportall", exportall_command))
+
+    app.add_handler(CommandHandler("importscore", importscore_command))
+    app.add_handler(CommandHandler("importduels", importduels_command))
+    app.add_handler(CommandHandler("importusers", importusers_command))
+    app.add_handler(CommandHandler("importall", importall_command))
+
+    app.add_handler(CommandHandler("migrascores", migrascores_command))
+
+    app.add_handler(CommandHandler("backupnow", backupnow_command))
+    app.add_handler(CommandHandler("listbackups", listbackups_command))
+
+
 
 
     app.add_handler(MessageHandler(filters.Dice.ALL, handle_dice))

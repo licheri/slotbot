@@ -153,3 +153,74 @@ def create_export_zip() -> io.BytesIO:
     
     buffer.seek(0)
     return buffer
+
+
+def auto_import_latest_backup() -> bool:
+    """Auto-import the latest backup on bot startup. Returns True if successful."""
+    backups = get_backup_list()
+    if not backups:
+        return False
+    
+    latest_backup = backups[-1]  # Get the most recent backup
+    
+    try:
+        with zipfile.ZipFile(latest_backup, "r") as z:
+            # Extract all files
+            z.extractall(".")
+        print(f"✅ Auto-imported latest backup: {latest_backup}")
+        return True
+    except Exception as e:
+        print(f"❌ Failed to auto-import backup {latest_backup}: {str(e)}")
+        return False
+
+def save_leaderboard_snapshot() -> None:
+    """Save a snapshot of today's leaderboard for daily recap"""
+    scores = load_scores()
+    
+    # Create snapshot with timestamp
+    from datetime import datetime, timezone
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    
+    snapshot_dir = "leaderboard_snapshots"
+    if not os.path.exists(snapshot_dir):
+        os.makedirs(snapshot_dir)
+    
+    # Sort by points for top 10
+    top_10 = sorted(scores.items(), key=lambda x: x[1].get("points", 0), reverse=True)[:10]
+    
+    snapshot_data = {
+        "date": today,
+        "timestamp": datetime.now(timezone.utc).timestamp(),
+        "top_10": [
+            {
+                "user_id": uid,
+                "name": data.get("name", "Unknown"),
+                "points": data.get("points", 0),
+                "streak": data.get("streak", 0),
+                "elo": data.get("elo", 1000)
+            }
+            for uid, data in top_10
+        ]
+    }
+    
+    snapshot_file = f"{snapshot_dir}/{today}_snapshot.json"
+    with open(snapshot_file, 'w', encoding='utf-8') as f:
+        json.dump(snapshot_data, f, indent=2, ensure_ascii=False)
+
+
+def get_leaderboard_snapshots(days_back: int = 1) -> Dict[str, Any]:
+    """Get snapshots from N days ago for comparison"""
+    from datetime import datetime, timezone, timedelta
+    
+    snapshot_dir = "leaderboard_snapshots"
+    if not os.path.exists(snapshot_dir):
+        return None
+    
+    target_date = (datetime.now(timezone.utc) - timedelta(days=days_back)).strftime("%Y-%m-%d")
+    snapshot_file = f"{snapshot_dir}/{target_date}_snapshot.json"
+    
+    if not os.path.exists(snapshot_file):
+        return None
+    
+    with open(snapshot_file, 'r', encoding='utf-8') as f:
+        return json.load(f)

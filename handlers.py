@@ -85,7 +85,7 @@ async def handle_dice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     # Check if domain expansion ended
     if chat_id in game_state.EXPANSION_UNTIL:
-        if game_state.EXPANSION_UNTIL[chat_id] < datetime.now(timezone.utc).timestamp():
+        if game_state.EXPANSION_UNTIL[chat_id] > 0 and game_state.EXPANSION_UNTIL[chat_id] < datetime.now(timezone.utc).timestamp():
             await update.message.reply_text(
                 "🌌 *Il dominio si dissolve.*\n"
                 "La realtà torna stabile.",
@@ -151,11 +151,12 @@ async def handle_dice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     scores[user_id]["total_slots"] += 1
 
     speed_msg = ""
-    if last_ts > 0:
+    if last_ts > 0:  # Only track speed if not first roll
         delta = now_ts - last_ts
-        if delta > 0:
+        if delta > 0.1:  # Ignore very fast repeated rolls (spamming)
             speed = 1.0 / delta
-            if speed > scores[user_id]["best_speed"]:
+            best_speed = scores[user_id].get("best_speed", 0.0)
+            if best_speed == 0.0 or speed > best_speed:  # First time or new record
                 scores[user_id]["best_speed"] = speed
                 speed_msg = f"\n⚡ Nuovo record personale di velocità per {nome}: {speed:.3f} slot/s"
 

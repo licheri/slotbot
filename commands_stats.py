@@ -5,6 +5,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 from storage import load_scores, load_duels, load_users
 from utils import format_winrate
+from models import get_achievements_display
 
 
 async def score_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -40,6 +41,11 @@ async def score_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         f"• Duelli: {d.get('duel_wins', 0)} vittorie / {d.get('duel_losses', 0)} sconfitte\n"
         f"• Domini espansi: {d.get('domains_used', 0)}\n"
     )
+    
+    # Add achievements
+    achievements = get_achievements_display(scores, user_id)
+    if achievements:
+        msg += achievements
 
     await update.message.reply_text(msg)
 

@@ -681,3 +681,270 @@ async def addduel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "❌ Errore! Controlla i parametri:\n"
             "/addduel <player1> <player2> <score1> <score2> <winner>"
         )
+
+
+async def debuginfo_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show complete debug info about all data (admin only)"""
+    user = update.message.from_user
+    if not is_admin(user.id):
+        return await update.message.reply_text("Non hai il permesso.")
+
+    try:
+        scores = load_scores()
+        users = load_users()
+        duels = load_duels() or []
+        import game_state
+        
+        msg = "📊 **STATO COMPLETO DEL BOT**\n\n"
+        
+        # Files info
+        msg += "📁 **File Salvati:**\n"
+        msg += f"• scores.json: {len(scores)} utenti\n"
+        msg += f"• users.json: {len(users)} nomi\n"
+        msg += f"• duels.json: {len(duels)} duelli storici\n\n"
+        
+        # Game state
+        msg += "🎮 **Stato Attuale:**\n"
+        msg += f"• Duelli attivi: {len(game_state.ACTIVE_DUELS)}\n"
+        msg += f"• Espansioni attive: {len(game_state.EXPANSION_UNTIL)}\n"
+        msg += f"• Sfide in sospeso: {len(game_state.PENDING_DUELS)}\n"
+        msg += f"• Slot bloccati: {game_state.SLOT_BLOCKED}\n"
+        msg += f"• Debug mode: {game_state.DEBUG_MODE}\n\n"
+        
+        # Data sample
+        msg += "👥 **Primi 3 Utenti:**\n"
+        for user_id, data in list(scores.items())[:3]:
+            name = data.get("name", "?")
+            points = data.get("points", 0)
+            msg += f"• {name}: {points} punti\n"
+        
+        # Backup info
+        backups = get_backup_list()
+        msg += f"\n💾 **Backup:** {len(backups)} file salvati\n"
+        if backups:
+            latest = backups[-1].split("/")[-1]
+            msg += f"Ultimo: {latest}"
+        
+        await update.message.reply_text(msg)
+    except Exception as e:
+        await update.message.reply_text(f"❌ Errore: {str(e)}")
+
+
+async def resetuser_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Reset a user's data to default (admin only)"""
+    user = update.message.from_user
+    if not is_admin(user.id):
+        return await update.message.reply_text("Non hai il permesso.")
+
+    if not context.args or len(context.args) < 1:
+        return await update.message.reply_text("Uso: /resetuser <user_id>")
+
+    try:
+        user_id = str(context.args[0])
+        scores = load_scores()
+        
+        if user_id not in scores:
+            return await update.message.reply_text(f"❌ Utente {user_id} non trovato.")
+        
+        nome = scores[user_id].get("name", "Unnamed")
+        
+        # Reset to default structure
+        from models import ensure_user_struct
+        scores[user_id] = {}
+        ensure_user_struct(scores, user_id, nome)
+        save_scores(scores)
+        
+        await update.message.reply_text(f"✅ {nome} resettato ai valori di default.")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Errore: {str(e)}")
+
+
+async def modifyuser_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Modify specific user field (admin only)
+    
+    Uso: /modifyuser <user_id> <campo> <valore>
+    Campi: points, streak, best_streak, sfiga, best_sfiga, elo, duel_wins, duel_losses
+    """
+    user = update.message.from_user
+    if not is_admin(user.id):
+        return await update.message.reply_text("Non hai il permesso.")
+
+    if not context.args or len(context.args) < 3:
+        return await update.message.reply_text(
+            "Uso: /modifyuser <user_id> <campo> <valore>\n\n"
+            "Campi: points, streak, best_streak, sfiga, best_sfiga, elo, "
+            "duel_wins, duel_losses, total_wins, total_slots, name"
+        )
+
+    try:
+        user_id = str(context.args[0])
+        field = context.args[1]
+        value = context.args[2]
+        
+        scores = load_scores()
+        if user_id not in scores:
+            return await update.message.reply_text(f"❌ Utente {user_id} non trovato.")
+        
+        # Parse value type
+        if value.isdigit():
+            value = int(value)
+        elif value.replace(".", "", 1).isdigit():
+            value = float(value)
+        elif value.lower() == "true":
+            value = True
+        elif value.lower() == "false":
+            value = False
+        
+        old_value = scores[user_id].get(field, "N/A")
+        scores[user_id][field] = value
+        save_scores(scores)
+        
+        await update.message.reply_text(
+            f"✅ {scores[user_id]['name']}.{field}\n"
+            f"{old_value} → {value}"
+        )
+    except Exception as e:
+        await update.message.reply_text(f"❌ Errore: {str(e)}")
+
+
+async def datacheck_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Check data integrity (admin only)"""
+    user = update.message.from_user
+    if not is_admin(user.id):
+        return await update.message.reply_text("Non hai il permesso.")
+
+    try:
+        scores = load_scores()
+        from models import ensure_user_struct
+        
+        issues = []
+        fixed = 0
+        
+        for user_id, data in scores.items():
+            if not isinstance(data, dict):
+                issues.append(f"❌ {user_id}: dati non sono dict")
+                continue
+            
+            # Verifica campi obbligatori
+            required = ["name", "points", "streak", "best_streak", "sfiga", 
+                       "best_sfiga", "total_slots", "total_wins", "elo"]
+            
+            for field in required:
+                if field not in data:
+                    ensure_user_struct(scores, user_id, data.get("name", "?"))
+                    fixed += 1
+        
+        if fixed > 0:
+            save_scores(scores)
+        
+        msg = "🔍 **Data Integrity Check**\n\n"
+        msg += f"✅ {len(scores)} utenti verificati\n"
+        msg += f"🔧 {fixed} campi aggiunti\n"
+        
+        if issues:
+            msg += f"\n❌ Problemi trovati:\n"
+            for issue in issues[:5]:
+                msg += f"{issue}\n"
+        else:
+            msg += "\n✅ Nessun problema!"
+        
+        await update.message.reply_text(msg)
+    except Exception as e:
+        await update.message.reply_text(f"❌ Errore: {str(e)}")
+
+
+async def cleanstate_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Clean temporary game state (admin only)"""
+    user = update.message.from_user
+    if not is_admin(user.id):
+        return await update.message.reply_text("Non hai il permesso.")
+
+    try:
+        import game_state
+        
+        old_duels = len(game_state.ACTIVE_DUELS)
+        old_expansions = len(game_state.EXPANSION_UNTIL)
+        old_pending = len(game_state.PENDING_DUELS)
+        
+        game_state.ACTIVE_DUELS.clear()
+        game_state.EXPANSION_UNTIL.clear()
+        game_state.PENDING_DUELS.clear()
+        game_state.SLOT_BLOCKED = False
+        
+        msg = f"🧹 **Pulizia Game State**\n\n"
+        msg += f"✅ Duelli attivi eliminati: {old_duels}\n"
+        msg += f"✅ Espansioni attive eliminate: {old_expansions}\n"
+        msg += f"✅ Sfide in sospeso eliminate: {old_pending}\n"
+        msg += f"✅ Slot sbloccati\n\n"
+        msg += "State pulito! I dati persistenti (.json) sono intatti."
+        
+        await update.message.reply_text(msg)
+    except Exception as e:
+        await update.message.reply_text(f"❌ Errore: {str(e)}")
+
+async def daily_recap(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Send daily recap of leaderboard changes to admin"""
+    from storage import get_leaderboard_snapshots, load_scores
+    
+    # Get yesterday's snapshot
+    yesterday = get_leaderboard_snapshots(days_back=1)
+    if not yesterday:
+        return  # No snapshot from yesterday
+    
+    # Get today's top 10
+    scores = load_scores()
+    today_top_10 = sorted(scores.items(), key=lambda x: x[1].get("points", 0), reverse=True)[:10]
+    
+    msg = "📊 *DAILY RECAP* 📊\n\n"
+    
+    # Analyze changes
+    yesterday_dict = {item["user_id"]: item for item in yesterday["top_10"]}
+    
+    movers = []
+    for idx, (uid, data) in enumerate(today_top_10):
+        old_position = None
+        old_points = None
+        
+        # Find old position
+        for old_idx, old_item in enumerate(yesterday["top_10"]):
+            if old_item["user_id"] == uid:
+                old_position = old_idx
+                old_points = old_item["points"]
+                break
+        
+        if old_position is not None:
+            position_change = old_position - idx
+            points_change = data.get("points", 0) - old_points
+            
+            if position_change != 0 or points_change > 50:
+                if position_change > 0:
+                    movers.append(f"📈 {data.get('name', 'Unknown')} sale a #{idx+1} (+{points_change} pts)")
+                elif position_change < 0:
+                    movers.append(f"📉 {data.get('name', 'Unknown')} scende a #{idx+1}")
+                else:
+                    if points_change > 0:
+                        movers.append(f"💎 {data.get('name', 'Unknown')} guadagna {points_change} pts (rimane #{idx+1})")
+        else:
+            # New entry to top 10
+            movers.append(f"⭐ {data.get('name', 'Unknown')} entra in top 10 a #{idx+1}!")
+    
+    if movers:
+        msg += "*HIGHLIGHTS:*\n"
+        for mover in movers:
+            msg += f"{mover}\n"
+    else:
+        msg += "Nessun cambiamento significativo nel leaderboard.\n"
+    
+    msg += "\n*TOP 10 OGGI:*\n"
+    for idx, (uid, data) in enumerate(today_top_10):
+        msg += f"#{idx+1} - {data.get('name', 'Unknown')}: {data.get('points', 0)} pts\n"
+    
+    # Send to admin
+    try:
+        await context.bot.send_message(
+            chat_id=ADMIN_ID,
+            text=msg,
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        print(f"❌ Failed to send daily recap: {str(e)}")

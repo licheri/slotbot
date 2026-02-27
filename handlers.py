@@ -10,7 +10,7 @@ from utils import (
     msg_vittoria, msg_streak, msg_sfiga, 
     is_expansion_active
 )
-from commands_gameplay import handle_duel_win
+from commands_gameplay import handle_duel_turn
 import game_state
 
 
@@ -220,9 +220,9 @@ async def handle_dice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         if streak_msg:
             msg += f"\n{streak_msg}"
 
-        duel_msg = handle_duel_win(chat_id, user_id, nome, scores)
+        duel_msg = handle_duel_turn(chat_id, user_id, nome, scores)
         if duel_msg:
-            msg += f"\n{duel_msg}"
+            msg += f"{duel_msg}"
 
     # -------------------------------------------------------
     #   LOSS

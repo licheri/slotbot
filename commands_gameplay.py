@@ -16,12 +16,13 @@ ACTIVE_DUELS = {}
 
 
 async def sfida_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Start a duel"""
+    """Challenge someone to a duel (2-stage: challenge + acceptance)"""
     message = update.message
     chat_id = message.chat_id
     challenger = message.from_user
 
-    if chat_id in game_state.ACTIVE_DUELS and game_state.ACTIVE_DUELS[chat_id]["active"]:
+    # Check if there's already an active duel
+    if chat_id in game_state.ACTIVE_DUELS:
         return await message.reply_text("C'è già una sfida attiva in questo gruppo. Finite quella prima.")
 
     if not message.reply_to_message:
@@ -31,44 +32,76 @@ async def sfida_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if target.id == challenger.id:
         return await message.reply_text("Non puoi sfidare te stesso, anche se sei messo male.")
 
-    game_state.ACTIVE_DUELS[chat_id] = {
-        "active": True,
-        "p1_id": str(challenger.id),
-        "p2_id": str(target.id),
-        "p1_name": challenger.first_name,
-        "p2_name": target.first_name,
-        "score": {
-            str(challenger.id): 0,
-            str(target.id): 0,
-        },
-    }
+    challenger_id = str(challenger.id)
+    target_id = str(target.id)
+
+    # Check if there's a pending challenge from the target to challenger
+    pending_key = (chat_id, target_id)
+    if pending_key in game_state.PENDING_DUELS and game_state.PENDING_DUELS[pending_key] == challenger.id:
+        # ACCETTAZIONE: il challenger risponde alla sfida del target
+        # Inizia il duello vero e proprio
+        del game_state.PENDING_DUELS[pending_key]
+        
+        game_state.ACTIVE_DUELS[chat_id] = {
+            "p1_id": target_id,
+            "p2_id": challenger_id,
+            "p1_name": target.first_name,
+            "p2_name": challenger.first_name,
+            "current_turn": target_id,  # Il target inizia (era lui che aveva sfidato)
+            "score": {
+                target_id: 0,
+                challenger_id: 0,
+            },
+        }
+
+        await message.reply_text(
+            f"⚔️ SFIDA ACCETTATA!\n"
+            f"{target.first_name} vs {challenger.first_name}\n\n"
+            f"🎲 Turno: {target.first_name} (manda uno slot a testa, a turni!)\n"
+            f"Primo a 3 vittorie vince!"
+        )
+        return
+
+    # SFIDA NUOVA: challenge non ancora accettato
+    pending_key = (chat_id, challenger_id)
+    game_state.PENDING_DUELS[pending_key] = target.id
 
     await message.reply_text(
-        f"⚔️ SFIDA APERTA!\n"
-        f"{challenger.first_name} ha sfidato {target.first_name}.\n"
-        f"Primo a 3 slot vincenti vince il duello!"
+        f"⚔️ SFIDA LANCIATA!\n"
+        f"{challenger.first_name} ha sfidato {target.first_name}.\n\n"
+        f"@{target.username or target.first_name}, rispondi con /sfida a questo messaggio per accettare!"
     )
 
 
-def handle_duel_win(chat_id: int, user_id: str, nome: str, scores) -> str:
-    """Handle duel win - returns message"""
+def handle_duel_turn(chat_id: int, user_id: str, nome: str, scores) -> str:
+    """Handle duel turn - only the current player's slot counts. Returns message"""
     if chat_id not in game_state.ACTIVE_DUELS:
         return ""
 
     duel = game_state.ACTIVE_DUELS[chat_id]
-    if not duel["active"]:
-        return ""
+
+    # Check if it's this player's turn
+    if duel["current_turn"] != user_id:
+        return f"\n⚔️ Non è il tuo turno! Tocca a {[d['p1_name'] if d['p1_id'] == duel['current_turn'] else d['p2_name'] for d in [duel]][0]}."
 
     if user_id not in duel["score"]:
         return ""
 
+    # This is the current player's turn - register the win
     duel["score"][user_id] += 1
     current = duel["score"][user_id]
 
-    msg = f"\n⚔️ {nome} sale a {current} vittorie nella sfida."
+    # Get opponent id
+    opponent_id = duel["p2_id"] if duel["p1_id"] == user_id else duel["p1_id"]
+    opponent_name = duel["p2_name"] if duel["p1_id"] == user_id else duel["p1_name"]
 
+    # Pass turn to opponent
+    duel["current_turn"] = opponent_id
+
+    msg = f"\n⚔️ {nome} vince il turno! ({current}/3)\n📍 Prossimo turno: {opponent_name}"
+
+    # Check if duel is over
     if current >= 3:
-        duel["active"] = False
         p1_id = duel["p1_id"]
         p2_id = duel["p2_id"]
         p1_name = duel["p1_name"]
@@ -102,7 +135,7 @@ def handle_duel_win(chat_id: int, user_id: str, nome: str, scores) -> str:
         )
         save_duels(duels)
 
-        msg += (
+        msg = (
             f"\n🏁 DUELLO FINITO!\n"
             f"{p1_name} vs {p2_name}: {s1} - {s2}\n"
             f"Vince {scores[winner_id]['name']}!\n\n"
@@ -110,6 +143,8 @@ def handle_duel_win(chat_id: int, user_id: str, nome: str, scores) -> str:
             f"• {scores[winner_id]['name']}: {scores[winner_id]['elo']} ( +{elo_gain} )\n"
             f"• {scores[loser_id]['name']}: {scores[loser_id]['elo']} ( {elo_loss} )"
         )
+
+        del game_state.ACTIVE_DUELS[chat_id]
 
     return msg
 
@@ -137,6 +172,9 @@ async def espansione_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
             "⏳ La finestra di attivazione è scaduta.\n"
             "La TRIPLA non risuona più con il dominio."
         )
+        scores[user_id]["last_triple_msg_id"] = None
+        save_scores(scores)
+
 
     if is_expansion_active(chat_id):
         return await update.message.reply_text("Il dominio è già attivo.")

@@ -49,13 +49,23 @@ async def slot_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await message.reply_text(random.choice(bot_messages), parse_mode="Markdown")
     
-    # Simulate bot rolls
+    # Actually send dice so users see the bot rolling
     wins = 0
+    # import WIN_VALUES here to match the main handler
+    from config import WIN_VALUES
     for i in range(num_rolls):
-        roll = random.randint(1, 64)
-        is_win = roll in [43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64]
-        if is_win:
-            wins += 1
+        try:
+            resp = await context.bot.send_dice(chat_id=chat_id, emoji="🎰")
+        except Exception:
+            resp = None
+
+        # if the dice value is available check for win
+        if resp and getattr(resp, "dice", None) is not None:
+            val = resp.dice.value
+            if val in WIN_VALUES:
+                wins += 1
+        # add a small delay so animations don't collide
+        await asyncio.sleep(1)
     
     result_messages = [
         f"🤖 Ho tirato {num_rolls} volte e ho vinto {wins} volte! *Non male, eh?* 🎉",

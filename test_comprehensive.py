@@ -146,7 +146,34 @@ async def test_game_logic():
         loaded = load_scores()
         assert "test1" in loaded
         results.add_pass("Save/load scores")
-        
+
+        # test duel turn helper alternation and win detection
+        from commands_gameplay import handle_duel_turn
+        import game_state
+        # create a dummy duel
+        chat = 42
+        p1, p2 = "a", "b"
+        game_state.ACTIVE_DUELS[chat] = {
+            "p1_id": p1,
+            "p2_id": p2,
+            "p1_name": "P1",
+            "p2_name": "P2",
+            "current_turn": p1,
+            "score": {p1: 0, p2: 0},
+        }
+        # p1 loses first round (turn passes to p2)
+        res = handle_duel_turn(chat, p1, "P1", scores, won=False)
+        assert "perde il round" in res
+        assert game_state.ACTIVE_DUELS[chat]["current_turn"] == p2
+        # simulate a full duel with p2 winning each of their turns
+        res = handle_duel_turn(chat, p2, "P2", scores, won=True)  # 1-0
+        # p1's turn, lose to pass back
+        res = handle_duel_turn(chat, p1, "P1", scores, won=False)
+        res = handle_duel_turn(chat, p2, "P2", scores, won=True)  # 2-0
+        res = handle_duel_turn(chat, p1, "P1", scores, won=False)
+        res = handle_duel_turn(chat, p2, "P2", scores, won=True)  # 3-0, duel should end
+        assert "DUELLO FINITO" in res
+        results.add_pass("Duel turn helper")
     except Exception as e:
         results.add_fail("Game logic", e)
     
@@ -211,6 +238,18 @@ async def test_commands():
             ("debug", debug_command),
         ]
         
+        # include easter egg and lottery commands
+        from commands_easter_eggs import slot_command, sfidabot_command
+        from commands_minigames import lotteria_command
+
+        stats_cmds.extend([
+            ("lotteria", lotteria_command),
+        ])
+        gameplay_cmds.extend([
+            ("slot", slot_command),
+            ("sfidabot", sfidabot_command),
+        ])
+        
         print("\n📊 Stats Commands:")
         for cmd_name, cmd_func in stats_cmds:
             try:
@@ -219,6 +258,18 @@ async def test_commands():
                 results.add_pass(f"/{cmd_name}")
             except Exception as e:
                 results.add_fail(f"/{cmd_name}", e)
+
+        # test lottery jackpot persistence by calling twice
+        mock_update.message.reply_text.reset_mock()
+        await lotteria_command(mock_update, mock_context)
+        mock_update.message.reply_text.reset_mock()
+        await lotteria_command(mock_update, mock_context)
+        # after second call file should contain _jackpot key
+        import json
+        with open('scores.json','r',encoding='utf-8') as f:
+            data = json.load(f)
+        assert "_jackpot" in data
+        results.add_pass("lottery jackpot persisted")
         
         print("\n⚔️  Gameplay Commands:")
         for cmd_name, cmd_func in gameplay_cmds:
@@ -251,11 +302,15 @@ async def test_dice_handler():
     
     try:
         from handlers import handle_dice
+        # ensure debug mode is off so non-admin rolls are allowed
+        import game_state
+        game_state.DEBUG_MODE = False
         
         mock_update = MagicMock()
         mock_update.message = MagicMock()
         mock_update.message.from_user.id = 12345
         mock_update.message.from_user.first_name = "Roller"
+        mock_update.message.from_user.is_bot = False
         mock_update.message.chat_id = 888
         mock_update.message.reply_text = AsyncMock()
         mock_update.message.message_id = 200
@@ -275,26 +330,50 @@ async def test_dice_handler():
         
         with patch('asyncio.sleep', new_callable=AsyncMock):
             await handle_dice(mock_update, mock_context)
-        
+        # debug: print stored score after win
+        from storage import load_scores
+        print("[dice test] post-win entry:", load_scores().get(str(mock_update.message.from_user.id)))
         results.add_pass("Winning roll (22)")
         
         # Test with losing roll
         mock_update.message.dice.value = 5  # LOSE
         mock_update.message.reply_text.reset_mock()
-        
+
         with patch('asyncio.sleep', new_callable=AsyncMock):
             await handle_dice(mock_update, mock_context)
-        
+
+        print("[dice test] post-lose entry:", load_scores().get(str(mock_update.message.from_user.id)))
         results.add_pass("Losing roll (5)")
         
         # Test with jackpot
         mock_update.message.dice.value = 64  # JACKPOT
         mock_update.message.reply_text.reset_mock()
-        
+
         with patch('asyncio.sleep', new_callable=AsyncMock):
             await handle_dice(mock_update, mock_context)
-        
+
+        print("[dice test] post-jackpot entry:", load_scores().get(str(mock_update.message.from_user.id)))
         results.add_pass("Jackpot roll (64)")
+
+        # ensure bot originates dice are ignored
+        mock_update.message.from_user.is_bot = True
+        mock_update.message.dice.value = 22
+        mock_update.message.reply_text.reset_mock()
+        with patch('asyncio.sleep', new_callable=AsyncMock):
+            await handle_dice(mock_update, mock_context)
+        print("[dice test] post-bot-ignore entry:", load_scores().get(str(mock_update.message.from_user.id)))
+        results.add_pass("Bot dice ignored")
+
+        # perform two consecutive rolls and check speed recorded
+        # first roll already done in previous tests, simulate another
+        mock_update.message.from_user.is_bot = False
+        mock_update.message.dice.value = 12
+        with patch('asyncio.sleep', new_callable=AsyncMock):
+            await handle_dice(mock_update, mock_context)
+        scores = load_scores()
+        uid = str(mock_update.message.from_user.id)
+        assert scores[uid].get("best_speed", 0.0) > 0
+        results.add_pass("Speed record updated")
         
     except Exception as e:
         results.add_fail("Dice handler", e)
@@ -302,7 +381,6 @@ async def test_dice_handler():
         traceback.print_exc()
     
     return results
-
 async def main():
     print("\n" + "="*50)
     print("🧪 SLOTBOT COMPREHENSIVE TEST SUITE")

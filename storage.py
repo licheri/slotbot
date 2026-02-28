@@ -22,10 +22,15 @@ def load_scores() -> Dict[str, Any]:
         with open(SCORES_FILE, "r", encoding="utf-8") as f:
             scores = json.load(f)
         
-        # Filter out corrupted entries (non-dict values)
-        cleaned = {k: v for k, v in scores.items() if isinstance(v, dict)}
+        # Filter out corrupted entries (non-dict values) but preserve
+        # special metadata keys that start with an underscore (e.g. _jackpot).
+        cleaned = {}
+        for k, v in scores.items():
+            if isinstance(v, dict) or k.startswith("_"):
+                cleaned[k] = v
+            # otherwise we drop the entry as corrupted
         
-        # If we removed entries, save the cleaned version
+        # If we removed entries (excluding metadata), save the cleaned version
         if len(cleaned) < len(scores):
             save_scores(cleaned)
         

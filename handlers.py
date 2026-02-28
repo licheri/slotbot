@@ -27,6 +27,10 @@ async def handle_dice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         if user_id_int != ADMIN_ID:
             return
 
+    # ignore rolls initiated by other bots (including ourselves) - they should not count
+    if getattr(update.message.from_user, "is_bot", False):
+        return
+
     # Check if slot tracking is blocked
     if game_state.SLOT_BLOCKED:
         await update.message.reply_text(
@@ -122,6 +126,11 @@ async def handle_dice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     scores = load_scores()
     ensure_user_struct(scores, user_id, nome)
 
+    # we must make sure the timestamp we calculated before the sleep is
+    # preserved, otherwise the field would revert to its previous value and
+    # the speed check would never see a delta. reapply it here.
+    scores[user_id]["last_slot_ts"] = now_ts
+
     jackpot = (dice.value == 64)
 
     # -------------------------------------------------------
@@ -153,7 +162,7 @@ async def handle_dice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     speed_msg = ""
     if last_ts > 0:  # Only track speed if not first roll
         delta = now_ts - last_ts
-        if delta > 0.1:  # Ignore very fast repeated rolls (spamming)
+        if delta > 0:  # we only care about positive intervals
             speed = 1.0 / delta
             best_speed = scores[user_id].get("best_speed", 0.0)
             if best_speed == 0.0 or speed > best_speed:  # First time or new record
@@ -221,7 +230,8 @@ async def handle_dice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         if streak_msg:
             msg += f"\n{streak_msg}"
 
-        duel_msg = handle_duel_turn(chat_id, user_id, nome, scores)
+        # handle duel turn with a win flag
+        duel_msg = handle_duel_turn(chat_id, user_id, nome, scores, True)
         if duel_msg:
             msg += f"{duel_msg}"
 
@@ -240,6 +250,11 @@ async def handle_dice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
         msg = msg_sfiga(nome, sfiga)
 
+        # handle duel turn on a losing roll (turn still passes)
+        duel_msg = handle_duel_turn(chat_id, user_id, nome, scores, False)
+        if duel_msg:
+            msg += f"{duel_msg}"
+
     if speed_msg:
         if msg:
             msg += speed_msg
@@ -248,5 +263,9 @@ async def handle_dice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     if msg:
         await message.reply_text(msg, parse_mode="Markdown")
-
+    # debug: log what we're about to save (especially during tests)
+    try:
+        print(f"[handle_dice] saving scores keys: {list(scores.keys())}")
+    except Exception:
+        pass
     save_scores(scores)

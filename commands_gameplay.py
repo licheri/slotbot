@@ -73,8 +73,12 @@ async def sfida_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-def handle_duel_turn(chat_id: int, user_id: str, nome: str, scores) -> str:
-    """Handle duel turn - only the current player's slot counts. Returns message"""
+def handle_duel_turn(chat_id: int, user_id: str, nome: str, scores, won: bool = False) -> str:
+    """Handle duel turn - either a win or a loss counts as using up your turn.
+
+    The caller should pass ``won=True`` when the player rolled a winning slot.
+    Returns a message to be appended to the slot result (or empty string).
+    """
     if chat_id not in game_state.ACTIVE_DUELS:
         return ""
 
@@ -82,26 +86,32 @@ def handle_duel_turn(chat_id: int, user_id: str, nome: str, scores) -> str:
 
     # Check if it's this player's turn
     if duel["current_turn"] != user_id:
-        return f"\n⚔️ Non è il tuo turno! Tocca a {[d['p1_name'] if d['p1_id'] == duel['current_turn'] else d['p2_name'] for d in [duel]][0]}."
+        current_name = duel["p1_name"] if duel["p1_id"] == duel["current_turn"] else duel["p2_name"]
+        return f"\n⚔️ Non è il tuo turno! Tocca a {current_name}."
 
     if user_id not in duel["score"]:
         return ""
 
-    # This is the current player's turn - register the win
-    duel["score"][user_id] += 1
-    current = duel["score"][user_id]
-
-    # Get opponent id
+    # Determine opponent info
     opponent_id = duel["p2_id"] if duel["p1_id"] == user_id else duel["p1_id"]
     opponent_name = duel["p2_name"] if duel["p1_id"] == user_id else duel["p1_name"]
 
-    # Pass turn to opponent
+    msg = ""
+    if won:
+        # register the win
+        duel["score"][user_id] += 1
+        current = duel["score"][user_id]
+        msg = f"\n🎯 {nome} vince il round! ({current}-{duel['score'][opponent_id]})\n"
+    else:
+        # lost round, no score increment
+        msg = f"\n💥 {nome} perde il round! ({duel['score'][user_id]}-{duel['score'][opponent_id]})\n"
+
+    # Always pass turn to opponent
     duel["current_turn"] = opponent_id
+    msg += f"📍 Prossimo turno: {opponent_name}"
 
-    msg = f"\n⚔️ {nome} vince il turno! ({current}/3)\n📍 Prossimo turno: {opponent_name}"
-
-    # Check if duel is over
-    if current >= 3:
+    # If it was a winning round, check if duel ended
+    if won and duel["score"][user_id] >= 3:
         p1_id = duel["p1_id"]
         p2_id = duel["p2_id"]
         p1_name = duel["p1_name"]
@@ -317,6 +327,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "• /tope — Classifica ELO\n"
         "• /espansione — Attiva l'espansione del dominio\n"
         "• /help — Questo magnifico manuale\n\n"
+        # make clear easter eggs are intentionally excluded
+        "_Nota: alcuni comandi easter-egg (es. /slot, /sfidabot, /lotteria) non sono elencati qui._\n\n"
         "Buona fortuna… ne avrai bisogno. 😈"
     )
 

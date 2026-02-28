@@ -121,11 +121,11 @@ async def lotteria_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     scores = load_scores()
     ensure_user_struct(scores, user_id, user_name)
     
-    # Check one-per-week cooldown (7 days)
+    # Check one-per-week cooldown (7 giorni)
     now_ts = datetime.now(timezone.utc).timestamp()
     last_lotteria = scores[user_id].get("last_lotteria_ts", 0)
     
-    if last_lotteria > 0 and now_ts - last_lotteria < 604800:  # 604800 = 7 giorni
+    if last_lotteria > 0 and now_ts - last_lotteria < 604800:
         days_remaining = int((604800 - (now_ts - last_lotteria)) / 86400)
         return await message.reply_text(
             f"🎰 Hai già partecipato a questa settimana!\n"
@@ -135,17 +135,13 @@ async def lotteria_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Update last lotteria timestamp
     scores[user_id]["last_lotteria_ts"] = now_ts
+
+    # Read current jackpot (stored in scores under key _jackpot)
+    jackpot = scores.get("_jackpot", 0)
     
     # Draw lucky number
     lucky_num = random.randint(1, 100)
     user_num = random.randint(1, 100)
-    
-    # Read current jackpot
-    import storage
-    with open(storage.SCORES_FILE, 'r', encoding='utf-8') as f:
-        import json
-        data = json.load(f)
-        jackpot = data.get("_jackpot", 0)
     
     # 20% chance to win
     won = user_num == lucky_num or random.random() < 0.20
@@ -175,13 +171,10 @@ async def lotteria_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Il jackpot salirà a: *{jackpot} punti* per il prossimo vincitore!\n"
             f"Riprova il prossimo giovedì, {user_name}."
         )
-    
-    # Save jackpot
-    data["_jackpot"] = jackpot
+
+    # Save both scores and updated jackpot
+    scores["_jackpot"] = jackpot
     save_scores(scores)
-    with open(storage.SCORES_FILE, 'w', encoding='utf-8') as f:
-        import json
-        json.dump(data, f, indent=2, ensure_ascii=False)
     
     await message.reply_text(msg, parse_mode="Markdown")
 
@@ -262,6 +255,16 @@ async def evento_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"Numero target: *{target_num}*\n"
                 f"❌ Peccato, non hai colpito nessuna volta."
             )
+    elif event["name"] == "Sfida della Velocità":
+        # simulate how many slots the user would manage in 10 seconds
+        rolls = random.randint(0, 20)  # arbitrary range
+        scores[user_id]["points"] += rolls
+        msg = (
+            f"{event['emoji']} *{event['name'].upper()}* {event['emoji']}\n\n"
+            f"{event['desc']}\n\n"
+            f"Hai fatto *{rolls}* slot in 10 secondi!\n"
+            f"🏆 Hai guadagnato *{rolls} punti*!"
+        )
     elif event["name"] == "Roulette Russa":
         roll = random.randint(1, 64)
         if roll >= 43:

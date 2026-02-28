@@ -34,20 +34,23 @@ async def debug_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if game_state.DEBUG_MODE:
         try:
+            # when debug activates automatically send current scores
             await exportscore_command(update, context)
         except:
             await update.message.reply_text("⚠️ Export fallito, ma debug attivo.")
 
         await update.message.reply_text(
             "🛠️ *DEBUG MODE ATTIVO*\n"
-            "• Solo tu puoi tirare slot\n"
-            "• I failsafe sono disattivati",
+            "• Solo tu puoi tirare slot (gli altri vengono ignorati)\n"
+            "• I failsafe sono disattivati\n"
+            "• Nessun punteggio o statistica viene salvata\n"
+            "• Le slot NON vengono registrate (streak, sfiga, velocity ecc.)",
             parse_mode="Markdown"
         )
     else:
         await update.message.reply_text(
             "🛠️ *DEBUG MODE DISATTIVATO*\n"
-            "Il bot è tornato alla normalità.",
+            "Il bot è tornato alla normalità: tutte le slot vengono di nuovo tracciate e i failsafe ripristinati.",
             parse_mode="Markdown"
         )
 

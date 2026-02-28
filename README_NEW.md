@@ -132,6 +132,8 @@ Every day at 22:00 UTC, the bot automatically sends the admin:
 - **Highlights**: Significant movers and big point gains
 - **Current top 10**: Full ranking snapshot
 
+⚙️ *Puoi richiamare gli highlights in qualsiasi momento usando il comando `/highlights` (non crea un nuovo savepoint, la copia giornaliera viene gestita automaticamente alle 20).* 
+
 ### 🛡️ Anti-Cheat Safeguards
 - **Forwarded message detection**: Can't forward rolls
 - **Edited message detection**: Can't edit past rolls
@@ -159,7 +161,7 @@ Every day at 22:00 UTC, the bot automatically sends the admin:
 **Backup & Export**:
 - `/backupnow` - Trigger immediate backup
 - `/listbackups` - Show all backup files
-- `/exportscore`, `/exportduels`, `/exportusers`, `/exportall` - Export data
+- `/exportscore`, `/exportduels`, `/exportusers`, `/exportall` - Export data (now includes leaderboard snapshots)
 - `/importscore`, `/importduels`, `/importusers`, `/importall` - Import data
 
 **Server Control**:

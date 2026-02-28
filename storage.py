@@ -146,7 +146,7 @@ def get_backup_list() -> List[str]:
 
 
 def create_export_zip() -> io.BytesIO:
-    """Create an in-memory ZIP buffer with all JSON files"""
+    """Create an in-memory ZIP buffer with all JSON files and snapshots"""
     buffer = io.BytesIO()
     
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as z:
@@ -155,6 +155,14 @@ def create_export_zip() -> io.BytesIO:
                 z.write(filename)
             except:
                 pass
+        # include leaderboard snapshots if any exist
+        snapshot_dir = "leaderboard_snapshots"
+        if os.path.isdir(snapshot_dir):
+            for path in glob.glob(f"{snapshot_dir}/*.json"):
+                try:
+                    z.write(path)
+                except:
+                    pass
     
     buffer.seek(0)
     return buffer

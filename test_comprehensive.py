@@ -341,6 +341,18 @@ async def test_commands():
         assert scores[uid]["last_bestemmia_sfiga"] == 100
         results.add_pass("bestemmia reuse after enough sfiga")
 
+        # verify create_export_zip includes snapshots
+        from storage import load_scores, create_export_zip
+        import zipfile, os
+        # make a fake snapshot file
+        os.makedirs("leaderboard_snapshots", exist_ok=True)
+        with open("leaderboard_snapshots/fake_snapshot.json", "w", encoding="utf-8") as f:
+            f.write("{}")
+        buf = create_export_zip()
+        z = zipfile.ZipFile(buf)
+        assert any("leaderboard_snapshots" in name for name in z.namelist())
+        results.add_pass("export zip includes snapshots")
+
         # highlights command test
         from storage import load_scores
         from datetime import datetime, timezone, timedelta

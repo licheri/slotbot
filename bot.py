@@ -25,20 +25,22 @@ from commands_admin import (
     unblockslot_command, helpadmin_command, backupnow_command,
     listbackups_command, scheduled_backup, test_command, addduel_command,
     debuginfo_command, resetuser_command, modifyuser_command, 
-    datacheck_command, cleanstate_command, daily_recap
+    datacheck_command, cleanstate_command, daily_recap, highlights_command
 )
 
 # Stats commands
 from commands_stats import (
     score_command, top_command, topstreak_command, topsfiga_command,
     topcombo_command, topwinrate_command, topspeed_command, 
-    topduelli_command, storicosfide_command, tope_command
+    topduelli_command, storicosfide_command, tope_command,
+    # highlights is a generic command but stats area is fine
 )
 
 # Gameplay commands
 from commands_gameplay import (
     sfida_command, espansione_command, benedici_command, 
-    maledici_command, invoca_command, sbusta_command, help_command
+    maledici_command, invoca_command, sbusta_command, help_command,
+    bestemmia_command
 )
 
 # Easter egg commands
@@ -93,6 +95,7 @@ def main() -> None:
     app.add_handler(CommandHandler("topduelli", topduelli_command))
     app.add_handler(CommandHandler("storicosfide", storicosfide_command))
     app.add_handler(CommandHandler("tope", tope_command))
+    app.add_handler(CommandHandler("highlights", highlights_command))
 
     # ============================================================
     #   GAMEPLAY COMMANDS
@@ -106,6 +109,7 @@ def main() -> None:
     app.add_handler(CommandHandler("espansione", espansione_command))
     app.add_handler(CommandHandler("slot", slot_command))
     app.add_handler(CommandHandler("sfidabot", sfidabot_command))
+    app.add_handler(CommandHandler("bestemmia", bestemmia_command))
 
     # ============================================================
     #   MINI-GAMES COMMANDS

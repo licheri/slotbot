@@ -208,9 +208,10 @@ async def test_commands():
         )
         from commands_gameplay import (
             sfida_command, espansione_command, benedici_command,
-            maledici_command, invoca_command, sbusta_command, help_command
+            maledici_command, invoca_command, sbusta_command, help_command,
+            bestemmia_command
         )
-        from commands_admin import helpadmin_command, debug_command
+        from commands_admin import helpadmin_command, debug_command, highlights_command
         
         stats_cmds = [
             ("score", score_command),
@@ -231,6 +232,7 @@ async def test_commands():
             ("benedici", benedici_command),
             ("maledici", maledici_command),
             ("invoca", invoca_command),
+            ("bestemmia", bestemmia_command),
         ]
         
         admin_cmds = [
@@ -279,6 +281,12 @@ async def test_commands():
                 results.add_pass(f"/{cmd_name}")
             except Exception as e:
                 results.add_fail(f"/{cmd_name}", e)
+        # check that help command now mentions /bestemmia
+        mock_update.message.reply_text.reset_mock()
+        await help_command(mock_update, mock_context)
+        help_text = mock_update.message.reply_text.call_args[0][0]
+        assert "/bestemmia" in help_text
+        results.add_pass("help includes bestemmia")
         
         print("\n👑 Admin Commands:")
         for cmd_name, cmd_func in admin_cmds:
@@ -288,7 +296,75 @@ async def test_commands():
                 results.add_pass(f"/{cmd_name}")
             except Exception as e:
                 results.add_fail(f"/{cmd_name}", e)
-        
+
+        # custom tests for bestemmia restrictions
+        from storage import load_scores, save_scores
+        from models import ensure_user_struct
+        uid = str(mock_update.message.from_user.id)
+        scores = load_scores()
+        ensure_user_struct(scores, uid, mock_update.message.from_user.first_name)
+        scores[uid]["sfiga"] = 49
+        scores[uid]["last_bestemmia_sfiga"] = 0
+        save_scores(scores)
+
+        mock_update.message.reply_text.reset_mock()
+        await bestemmia_command(mock_update, mock_context)
+        assert "Hai bisogno di almeno 50" in mock_update.message.reply_text.call_args[0][0]
+        scores = load_scores()
+        assert "bestemmia" not in scores[uid].get("achievements", [])
+        results.add_pass("bestemmia blocked under threshold")
+
+        scores[uid]["sfiga"] = 50
+        save_scores(scores)
+        mock_update.message.reply_text.reset_mock()
+        await bestemmia_command(mock_update, mock_context)
+        # ensure the vent message was sent (contains an emoji or strong phrase)
+        resp_text = mock_update.message.reply_text.call_args[0][0]
+        assert "🔥" in resp_text
+        scores = load_scores()
+        assert "bestemmia" in scores[uid].get("achievements", [])
+        assert scores[uid]["last_bestemmia_sfiga"] == 50
+        results.add_pass("bestemmia allowed and achievement unlocked")
+
+        scores[uid]["sfiga"] = 90
+        save_scores(scores)
+        mock_update.message.reply_text.reset_mock()
+        await bestemmia_command(mock_update, mock_context)
+        assert "ancora" in mock_update.message.reply_text.call_args[0][0]
+        results.add_pass("bestemmia cooldown check")
+
+        scores[uid]["sfiga"] = 100
+        save_scores(scores)
+        mock_update.message.reply_text.reset_mock()
+        await bestemmia_command(mock_update, mock_context)
+        scores = load_scores()
+        assert scores[uid]["last_bestemmia_sfiga"] == 100
+        results.add_pass("bestemmia reuse after enough sfiga")
+
+        # highlights command test
+        from storage import load_scores
+        from datetime import datetime, timezone, timedelta
+        import json, os
+
+        # ensure yesterday snapshot exists with lower points
+        yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
+        if not os.path.exists("leaderboard_snapshots"):
+            os.makedirs("leaderboard_snapshots")
+        scores = load_scores()
+        scores[uid]["points"] = 10
+        save_scores(scores)
+        with open(f"leaderboard_snapshots/{yesterday}_snapshot.json", "w", encoding="utf-8") as f:
+            json.dump({"date": yesterday, "top_10": [{"user_id": uid, "name": "TestUser", "points": 10}]}, f)
+
+        # bump points to trigger a mover
+        scores[uid]["points"] = 100
+        save_scores(scores)
+        mock_update.message.reply_text.reset_mock()
+        await highlights_command(mock_update, mock_context)
+        assert "HIGHLIGHTS" in mock_update.message.reply_text.call_args[0][0]
+        assert "TOP 10" in mock_update.message.reply_text.call_args[0][0]
+        results.add_pass("highlights command")
+    
     except Exception as e:
         results.add_fail("Command import", e)
     

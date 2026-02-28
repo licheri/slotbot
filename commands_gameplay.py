@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from telegram import Update
 from telegram.ext import ContextTypes
 from storage import load_scores, save_scores, load_duels, save_duels, load_users, save_users
-from models import ensure_user_struct, update_elo
+from models import ensure_user_struct, update_elo, unlock_achievement
 from utils import is_expansion_active
 import game_state
 
@@ -299,6 +299,39 @@ async def sbusta_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg, parse_mode="Markdown")
 
 
+async def bestemmia_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Permit a user to vent a curse once every 50 losing slots"""
+    user = update.message.from_user
+    user_id = str(user.id)
+
+    scores = load_scores()
+    ensure_user_struct(scores, user_id, user.first_name)
+
+    sfiga = scores[user_id].get("sfiga", 0)
+    last_baseline = scores[user_id].get("last_bestemmia_sfiga", 0)
+
+    if sfiga < 50:
+        return await update.message.reply_text(
+            "❌ Hai bisogno di almeno 50 skill issues consecutive per poter bestemmiare!"
+        )
+
+    if sfiga - last_baseline < 50:
+        needed = last_baseline + 50 - sfiga
+        return await update.message.reply_text(
+            f"🛑 Hai già bestemmiato di recente. Ti servono ancora {needed} skill issues prima di poterlo fare di nuovo."
+        )
+
+    # Allow the vent and record baseline
+    scores[user_id]["last_bestemmia_sfiga"] = sfiga
+    unlock_achievement(scores, user_id, "bestemmia")
+    save_scores(scores)
+
+    await update.message.reply_text(
+        "🔥 *PORCO DIO* 🔥",
+        parse_mode="Markdown"
+    )
+
+
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Show help menu"""
     msg = (
@@ -326,6 +359,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "• /topspeed — Classifica velocità\n"
         "• /tope — Classifica ELO\n"
         "• /espansione — Attiva l'espansione del dominio\n"
+        "• /bestemmia — Sfoga la tua frustrazione (richiede 50 sfighe)\n"
         "• /help — Questo magnifico manuale\n\n"
         # make clear easter eggs are intentionally excluded
         "_Nota: alcuni comandi easter-egg (es. /slot, /sfidabot, /lotteria) non sono elencati qui._\n\n"

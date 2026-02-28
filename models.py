@@ -19,6 +19,7 @@ ACHIEVEMENTS = {
     "lottery_winner": {"name": "Lottery Winner", "emoji": "🎰", "desc": "Vinto la lotteria"},
     "event_master": {"name": "Event Master", "emoji": "⚡", "desc": "Vinto un evento"},
     "speed_demon": {"name": "Speed Demon", "emoji": "💨", "desc": "Record di velocità"},
+    "bestemmia": {"name": "Sfogo", "emoji": "💥", "desc": "Ha fatto una bestemmia dopo 50 sfighe"}
 }
 
 
@@ -51,6 +52,7 @@ def ensure_user_struct(scores: Dict[str, Any], user_id: str, nome: str) -> None:
             "last_tarocchi_ts": 0,
             "last_lotteria_ts": 0,
             "last_evento_ts": 0,
+            "last_bestemmia_sfiga": 0,
             "achievements": []
         }
     else:
@@ -80,6 +82,7 @@ def ensure_user_struct(scores: Dict[str, Any], user_id: str, nome: str) -> None:
         scores[user_id].setdefault("last_tarocchi_ts", 0)
         scores[user_id].setdefault("last_lotteria_ts", 0)
         scores[user_id].setdefault("last_evento_ts", 0)
+        scores[user_id].setdefault("last_bestemmia_sfiga", 0)
         scores[user_id].setdefault("achievements", [])
 
         scores[user_id]["name"] = nome

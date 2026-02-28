@@ -894,9 +894,10 @@ async def daily_recap(context: ContextTypes.DEFAULT_TYPE) -> None:
     if not yesterday:
         return  # No snapshot from yesterday
     
-    # Get today's top 10
+    # Get today's top 10 (ignore metadata/non-dict entries)
     scores = load_scores()
-    today_top_10 = sorted(scores.items(), key=lambda x: x[1].get("points", 0), reverse=True)[:10]
+    clean_scores = {k: v for k, v in scores.items() if isinstance(v, dict)}
+    today_top_10 = sorted(clean_scores.items(), key=lambda x: x[1].get("points", 0), reverse=True)[:10]
     
     msg = "📊 *DAILY RECAP* 📊\n\n"
     
@@ -951,3 +952,53 @@ async def daily_recap(context: ContextTypes.DEFAULT_TYPE) -> None:
         )
     except Exception as e:
         print(f"❌ Failed to send daily recap: {str(e)}")
+
+
+async def highlights_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show today's highlights in the current chat (no snapshot created)"""
+    from storage import get_leaderboard_snapshots, load_scores
+
+    yesterday = get_leaderboard_snapshots(days_back=1)
+    if not yesterday:
+        return await update.message.reply_text("Nessun highlight disponibile ancora.")
+
+    scores = load_scores()
+    clean_scores = {k: v for k, v in scores.items() if isinstance(v, dict)}
+    today_top_10 = sorted(clean_scores.items(), key=lambda x: x[1].get("points", 0), reverse=True)[:10]
+
+    msg = "📊 *HIGHLIGHTS DEL GIORNO* 📊\n\n"
+
+    movers = []
+    for idx, (uid, data) in enumerate(today_top_10):
+        old_position = None
+        old_points = None
+        for old_idx, old_item in enumerate(yesterday["top_10"]):
+            if old_item["user_id"] == uid:
+                old_position = old_idx
+                old_points = old_item["points"]
+                break
+        if old_position is not None:
+            position_change = old_position - idx
+            points_change = data.get("points", 0) - old_points
+            if position_change != 0 or points_change > 50:
+                if position_change > 0:
+                    movers.append(f"📈 {data.get('name','Unknown')} sale a #{idx+1} (+{points_change} pts)")
+                elif position_change < 0:
+                    movers.append(f"📉 {data.get('name','Unknown')} scende a #{idx+1}")
+                else:
+                    if points_change > 0:
+                        movers.append(f"💎 {data.get('name','Unknown')} guadagna {points_change} pts (rimane #{idx+1})")
+        else:
+            movers.append(f"⭐ {data.get('name','Unknown')} entra in top 10 a #{idx+1}!")
+    if movers:
+        msg += "*HIGHLIGHTS:*\n"
+        for m in movers:
+            msg += f"{m}\n"
+    else:
+        msg += "Nessun cambiamento significativo nel leaderboard.\n"
+
+    msg += "\n*TOP 10 OGGI:*\n"
+    for idx, (uid, data) in enumerate(today_top_10):
+        msg += f"#{idx+1} - {data.get('name','Unknown')}: {data.get('points',0)} pts\n"
+
+    await update.message.reply_text(msg, parse_mode="Markdown")

@@ -29,7 +29,7 @@ A feature-rich Telegram slot machine bot with comprehensive stats tracking, play
 - **Triple requirement**: Get a triple to unlock domain expansion
 - **10-message window**: Must activate within 10 messages after the triple
 - **33% reroll chance**: Failed rolls have 33% chance to be cancelled (Hakari-style)
-- **Duration**: Expansion lasts for 10 minutes
+- **Duration**: Expansion lasts for 4 minutes and 11 seconds
 - **Bonus points**: +1 point per win during expansion
 
 ### 🏆 Achievement System
@@ -47,6 +47,7 @@ An unlock-based achievement system with 12 total badges:
 - 🎰 **Lottery Winner** - Win the weekly lottery
 - ⚡ **Event Master** - Participate in a Sunday event
 - 💨 **Speed Demon** - Set a new personal speed record
+- 💥 **Sfogo** - Usato /bestemmia dopo 50 sfighe
 
 All achievements are displayed in `/score` and persisted across bot restarts.
 
@@ -92,6 +93,12 @@ All achievements are displayed in `/score` and persisted across bot restarts.
 - **Points**: Counted in duel_wins/duel_losses
 - **Achievement**: Bot Slayer (when you win)
 
+#### /bestemmia - Vent Your Frustration
+- **Requirement**: You need at least a 50‑loss streak (`sfiga >= 50`)
+- **Cooldown**: Once every 50 additional losses (tracked automatically)
+- **Mechanics**: lets you *sfogarti* with a brutal curse message
+- **Achievement**: Sfogo (unlocked on first use)
+
 ### 📊 Statistics & Leaderboards
 
 **Personal Stats** - `/score`
@@ -117,6 +124,7 @@ All achievements are displayed in `/score` and persisted across bot restarts.
 - `/topduelli` - Duel wins
 - `/tope` - ELO ratings
 - `/storicosfide` - Last 10 duel results
+- `/highlights` - Show daily highlights (no manual savepoint)
 
 ### 📅 Daily Recap
 Every day at 22:00 UTC, the bot automatically sends the admin:
